@@ -4,6 +4,7 @@ import '../../data/auth/session_manager.dart';
 import '../../data/models/models.dart';
 import '../components/primary_button.dart';
 import '../theme/colors.dart';
+import '../../utils/validators.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -15,6 +16,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   String email = "";
   String password = "";
   bool passwordVisible = false;
@@ -27,10 +29,12 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 32),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 32),
               // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -73,8 +77,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  TextFormField(
                     onChanged: (value) => email = value,
+                    validator: Validators.validateEmail,
                     decoration: InputDecoration(
                       hintText: 'correo@universidad.edu',
                       prefixIcon: const Icon(Icons.person_outline),
@@ -94,8 +99,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  TextFormField(
                     onChanged: (value) => password = value,
+                    validator: Validators.validatePassword,
                     obscureText: !passwordVisible,
                     decoration: InputDecoration(
                       hintText: '••••••••',
@@ -174,8 +180,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 text: 'Iniciar sesión',
                 icon: Icons.lock,
                 onPressed: () {
-                  context.read<SessionManager>().login(selectedRole);
-                  widget.onLoginSuccess();
+                  if (_formKey.currentState!.validate()) {
+                    context.read<SessionManager>().login(selectedRole);
+                    widget.onLoginSuccess();
+                  }
                 },
               ),
               const SizedBox(height: 16),
@@ -190,8 +198,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
             ],
+            ),
           ),
         ),
       ),
