@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'data/auth/session_manager.dart';
-import 'navigation/app_router.dart';
-import 'ui/theme/theme.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
+import 'package:smartroute_flutter/nucleo/navegacion/app_router.dart';
+import 'package:smartroute_flutter/nucleo/tema/theme.dart';
 
 /// Punto de entrada principal de la aplicación SmartRoute.
 void main() {

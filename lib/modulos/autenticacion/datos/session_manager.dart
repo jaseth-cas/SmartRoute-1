@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../models/models.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 
 /// Simula un Payload de un token JWT.
 /// Almacena los datos del usuario que ha iniciado sesión, su rol y los tiempos de expiración.

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
-import '../components/primary_button.dart';
-import '../theme/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -187,12 +188,34 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
               ),
               const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    '¿No tienes cuenta?',
+                    style: TextStyle(color: SmartColors.smartGray, fontSize: 14),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => context.push('/register'),
+                    child: const Text(
+                      'Regístrate',
+                      style: TextStyle(
+                        color: SmartColors.smartBlue,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               GestureDetector(
                 onTap: () {},
                 child: const Text(
                   'Olvidé mi contraseña',
                   style: TextStyle(
-                    color: SmartColors.smartBlue,
+                    color: SmartColors.smartGray,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),

@@ -6,6 +6,7 @@ import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.d
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/modulos/splash/vistas/splash_screen.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/vistas/login_screen.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/vistas/register_screen.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/vistas/role_home_screen.dart';
 import 'package:smartroute_flutter/modulos/estudiante/vistas/student_home_screen.dart';
 import 'package:smartroute_flutter/modulos/estudiante/vistas/routes_screen.dart';
@@ -17,6 +18,7 @@ import 'package:smartroute_flutter/modulos/estudiante/vistas/eta_screen.dart';
 import 'package:smartroute_flutter/modulos/estudiante/vistas/notifications_screen.dart';
 import 'package:smartroute_flutter/modulos/estudiante/vistas/notification_settings_screen.dart';
 import 'package:smartroute_flutter/modulos/estudiante/vistas/student_profile_screen.dart';
+import 'package:smartroute_flutter/modulos/estudiante/vistas/edit_profile_screen.dart';
 import 'package:smartroute_flutter/modulos/admin/vistas/admin_home_screen.dart';
 import 'package:smartroute_flutter/modulos/admin/vistas/manage_routes_screen.dart';
 import 'package:smartroute_flutter/modulos/admin/vistas/manage_buses_screen.dart';
@@ -24,6 +26,7 @@ import 'package:smartroute_flutter/modulos/admin/vistas/manage_stops_screen.dart
 import 'package:smartroute_flutter/modulos/admin/vistas/assign_stops_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_home_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_demand_screen.dart';
+import 'package:smartroute_flutter/modulos/conductor/vistas/report_incident_screen.dart';
 import 'package:smartroute_flutter/modulos/propietario/vistas/owner_home_screen.dart';
 import 'package:smartroute_flutter/modulos/propietario/vistas/owner_map_screen.dart';
 import 'package:smartroute_flutter/modulos/propietario/vistas/register_bus_screen.dart';
@@ -50,6 +53,10 @@ class AppRouter {
           builder: (context, state) => LoginScreen(
             onLoginSuccess: () => context.go('/role_home'),
           ),
+        ),
+        GoRoute(
+          path: '/register',
+          builder: (context, state) => const RegisterScreen(),
         ),
         GoRoute(
           path: '/role_home',
@@ -140,6 +147,10 @@ class AppRouter {
           builder: (context, state) => const StudentProfileScreen(),
         ),
         GoRoute(
+          path: '/edit_profile',
+          builder: (context, state) => const EditProfileScreen(),
+        ),
+        GoRoute(
           path: '/admin_home',
           builder: (context, state) => const AdminHomeScreen(),
         ),
@@ -170,6 +181,10 @@ class AppRouter {
           builder: (context, state) => const DriverDemandScreen(),
         ),
         GoRoute(
+          path: '/report_incident',
+          builder: (context, state) => const ReportIncidentScreen(),
+        ),
+        GoRoute(
           path: '/owner_home',
           builder: (context, state) => const OwnerHomeScreen(),
         ),
@@ -185,7 +200,9 @@ class AppRouter {
       // Lógica de redirección (Protección de rutas)
       redirect: (context, state) {
         final isLoggedIn = sessionManager.isLoggedIn;
-        final isGoingToAuth = state.matchedLocation == '/login' || state.matchedLocation == '/splash';
+        final isGoingToAuth = state.matchedLocation == '/login' || 
+                              state.matchedLocation == '/splash' ||
+                              state.matchedLocation == '/register';
         
         if (!isLoggedIn && !isGoingToAuth) {
           // Si intenta acceder a una pantalla sin estar logueado, se envía al login

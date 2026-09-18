@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/stop_card.dart';
-import '../components/empty_state.dart';
-import '../components/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/stop_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 
 class StopsScreen extends StatelessWidget {
   final String routeCode;

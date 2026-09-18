@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
-import '../components/status_chip.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -176,9 +176,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               icon: const Icon(Icons.flag),
               label: const Text('Finalizar ruta', style: TextStyle(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: SmartColors.smartRed,
+                backgroundColor: SmartColors.smartGray,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/report_incident'),
+              icon: const Icon(Icons.warning_rounded, size: 18),
+              label: const Text('Reportar un Incidente', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: SmartColors.smartRed,
+                side: const BorderSide(color: SmartColors.smartRed),
+                minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),

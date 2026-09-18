@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
+import '../../../nucleo/tema/colors.dart';
+import '../../../nucleo/widgets/smart_route_card.dart';
+import '../../../nucleo/widgets/custom_text_field.dart';
+import '../../../nucleo/widgets/primary_button.dart';
 
 class ManageRoutesScreen extends StatefulWidget {
   const ManageRoutesScreen({super.key});
@@ -24,43 +26,83 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
   }
 
   void _showAddRouteDialog() {
-    showDialog(
+    final formKey = GlobalKey<FormState>();
+    String newName = "";
+    String newOrigin = "";
+    String newDestination = "";
+
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          title: const Text('Agregar Nueva Ruta', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: const Text('Simulación: Esto registrará una nueva ruta en el sistema y la asignará a los mapas.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Agregar Nueva Ruta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Nombre de la Ruta',
+                  hint: 'Ej. Ruta Periférica',
+                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                  onChanged: (val) => newName = val,
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  label: 'Origen',
+                  hint: 'Ej. Terminal Norte',
+                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                  onChanged: (val) => newOrigin = val,
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  label: 'Destino',
+                  hint: 'Ej. Universidad',
+                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                  onChanged: (val) => newDestination = val,
+                ),
+                const SizedBox(height: 24),
+                PrimaryButton(
+                  text: 'Crear Ruta',
+                  icon: Icons.add_road,
+                  onPressed: () {
+                    if (formKey.currentState!.validate()) {
+                      final newRoute = RouteMock(
+                        id: routeCounter,
+                        code: 'R-NUEVA-$routeCounter',
+                        name: newName,
+                        origin: newOrigin,
+                        destination: newDestination,
+                        status: 'Activa',
+                        etaMinutes: 0,
+                        busCode: 'N/A',
+                        direction: RouteDirection.boulevardToUniversity,
+                        description: 'Ruta añadida dinámicamente',
+                        isFavorite: false,
+                      );
+                      setState(() {
+                        routesList.insert(0, newRoute);
+                        routeCounter++;
+                      });
+                      Navigator.pop(context);
+                    }
+                  },
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: SmartColors.smartBlue, foregroundColor: Colors.white),
-              onPressed: () {
-                final newRoute = RouteMock(
-                  id: routeCounter,
-                  code: 'R-NUEVA-$routeCounter',
-                  name: 'Ruta Nueva $routeCounter',
-                  origin: 'Punto A',
-                  destination: 'Punto B',
-                  status: 'Inactiva',
-                  etaMinutes: 0,
-                  busCode: 'N/A',
-                  direction: RouteDirection.boulevardToUniversity,
-                  description: 'Ruta añadida dinámicamente',
-                  isFavorite: false,
-                );
-                setState(() {
-                  routesList.insert(0, newRoute);
-                  routeCounter++;
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Crear Ruta'),
-            ),
-          ],
+          ),
         );
       },
     );

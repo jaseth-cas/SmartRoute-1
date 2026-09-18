@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/route_card.dart';
-import '../components/empty_state.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 
 class RoutesScreen extends StatefulWidget {
   const RoutesScreen({super.key});
@@ -31,8 +31,15 @@ class _RoutesScreenState extends State<RoutesScreen> {
       return matchesSearch && matchesFilter;
     }).toList();
 
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+    return PopScope(
+      canPop: context.canPop(),
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          context.go('/student_home');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
         title: const Text('Rutas disponibles', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -99,15 +106,15 @@ class _RoutesScreenState extends State<RoutesScreen> {
                       final route = filteredRoutes[index];
                       return RouteCard(
                         route: route,
-                        onDetailClick: () => context.go('/route_detail/${route.code}'),
-                        onStopsClick: () => context.go('/stops/${route.code}'),
+                        onDetailClick: () => context.push('/route_detail/${route.code}'),
+                        onStopsClick: () => context.push('/stops/${route.code}'),
                       );
                     },
                   ),
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildFilterChip(String label) {

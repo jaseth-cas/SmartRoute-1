@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/smart_route_card.dart';
-import '../components/status_chip.dart';
-import '../components/info_banner.dart';
-import '../components/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 
 class EtaScreen extends StatelessWidget {
   final String routeCode;
@@ -25,8 +25,15 @@ class EtaScreen extends StatelessWidget {
     final stop = MockData.stops.where((s) => s.stopCode == stopCode).firstOrNull;
     final bus = MockData.getBusByCode(route?.busCode ?? "");
 
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+    return PopScope(
+      canPop: context.canPop(),
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          context.go('/student_home');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
         title: const Text('ETA simulado', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -96,7 +103,7 @@ class EtaScreen extends StatelessWidget {
             PrimaryButton(
               text: 'Ver bus en mapa',
               icon: Icons.explore,
-              onPressed: () => context.go('/map/$routeCode/$stopCode'),
+              onPressed: () => context.push('/map/$routeCode/$stopCode'),
             ),
             const SizedBox(height: 12),
             OutlinedButton(
@@ -121,7 +128,7 @@ class EtaScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 

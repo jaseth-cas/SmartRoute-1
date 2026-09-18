@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../components/primary_button.dart';
-import '../theme/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class SplashScreen extends StatelessWidget {
   final VoidCallback onStartClick;

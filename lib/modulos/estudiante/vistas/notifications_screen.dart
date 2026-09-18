@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/notification_card.dart';
-import '../components/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/notification_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -19,8 +19,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+    return PopScope(
+      canPop: context.canPop(),
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          context.go('/student_home');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
         title: const Text('Notificaciones', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -38,7 +45,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () => context.go('/notification_settings'),
+            onPressed: () => context.push('/notification_settings'),
           ),
         ],
       ),
@@ -92,6 +99,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

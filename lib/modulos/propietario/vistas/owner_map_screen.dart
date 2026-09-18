@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class OwnerMapScreen extends StatefulWidget {
   const OwnerMapScreen({super.key});

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
-import '../components/status_chip.dart';
-import '../components/empty_state.dart';
-import '../components/section_title.dart';
-import '../components/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
+import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 
 class RouteDetailScreen extends StatefulWidget {
   final String routeCode;

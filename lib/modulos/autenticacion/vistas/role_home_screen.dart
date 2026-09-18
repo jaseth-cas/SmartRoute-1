@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
-import '../components/primary_button.dart';
-import '../theme/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class RoleHomeScreen extends StatelessWidget {
   final VoidCallback onNavigateToLogin;

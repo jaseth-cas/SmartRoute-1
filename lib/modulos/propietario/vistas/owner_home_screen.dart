@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import '../../data/mock/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 
 class OwnerHomeScreen extends StatelessWidget {
   const OwnerHomeScreen({super.key});

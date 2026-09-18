@@ -3,15 +3,15 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/session_info_card.dart';
-import '../components/section_title.dart';
-import '../components/smart_route_card.dart';
-import '../components/status_chip.dart';
-import '../components/info_banner.dart';
-import '../components/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/session_info_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 
 class StudentHomeScreen extends StatelessWidget {
   const StudentHomeScreen({super.key});
@@ -23,8 +23,10 @@ class StudentHomeScreen extends StatelessWidget {
     final defaultRoute = MockData.getDefaultStudentRoute();
     final defaultStop = MockData.getDefaultStudentStop();
 
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+    return PopScope(
+      canPop: false, // Previene que el botón atrás de Android cierre la app
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
         title: Row(
           children: [
@@ -37,6 +39,10 @@ class StudentHomeScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person, color: SmartColors.smartBlue),
+            onPressed: () => context.push('/student_profile'), // Añadido botón a Perfil/Logout
+          ),
           IconButton(
             icon: const Badge(
               child: Icon(Icons.notifications_none, color: SmartColors.smartText),
@@ -88,165 +94,102 @@ class StudentHomeScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            const SessionInfoCard(),
-            const SizedBox(height: 24),
-            const SectionTitle(text: 'Ruta sugerida'),
+            const SectionTitle(text: 'Próximo Bus (ETA)'),
             GestureDetector(
-              onTap: () => context.go('/route_detail/${defaultRoute.code}'),
+              onTap: () {
+                if (defaultRoute != null) {
+                  context.push('/route_detail/${defaultRoute.code}');
+                }
+              },
               child: SmartRouteCard(
                 color: const Color(0xFFF0F7FF),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      defaultRoute.name,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SmartColors.smartText),
-                    ),
-                    const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Próximo bus', style: TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-                            Text(
-                              defaultRoute.busCode ?? "N/A",
-                              style: const TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartBlue),
-                            ),
-                          ],
+                        Text(
+                          defaultRoute?.name ?? 'No hay ruta',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SmartColors.smartText),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text('ETA', style: TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-                            Text(
-                              '${defaultRoute.etaMinutes} minutos',
-                              style: const TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartBlue),
-                            ),
-                          ],
+                        const Icon(Icons.directions_bus, color: SmartColors.smartBlue),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${defaultRoute?.etaMinutes ?? 0}',
+                          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: SmartColors.smartBlue),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'MIN',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SmartColors.smartGray),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    const StatusChip(text: 'En camino'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const SectionTitle(text: 'Parada favorita'),
-            GestureDetector(
-              onTap: () => context.go('/stop_detail/${defaultStop.stopCode}'),
-              child: SmartRouteCard(
-                child: Row(
-                  children: [
-                    const Icon(Icons.place, color: SmartColors.smartBlue, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(defaultStop.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text('ID: ${defaultStop.stopCode}', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-                        ],
-                      ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Parada: ${defaultStop?.name ?? "N/A"}', style: const TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                        const StatusChip(text: 'En camino'),
+                      ],
                     ),
-                    const Icon(Icons.favorite, color: Colors.red, size: 16),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 24),
-            const InfoBanner(text: 'Los datos son simulados. El sentido de la ruta puede cambiar las paradas.'),
-            const SizedBox(height: 16),
-            const SectionTitle(text: 'Accesos rápidos'),
             Row(
-              children: [
-                Expanded(
-                  child: QuickAccessItem(
-                    title: 'Rutas',
-                    icon: Icons.map,
-                    onClick: () => context.go('/routes'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: QuickAccessItem(
-                    title: 'Paradas',
-                    icon: Icons.place,
-                    onClick: () => context.go('/stops/R-UB'),
-                  ),
-                ),
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: const [
+                SectionTitle(text: 'Rastreo en Vivo'),
+                Text('Ver mapa completo', style: TextStyle(fontSize: 12, color: SmartColors.smartBlue, fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: QuickAccessItem(
-                    title: 'Mapa',
-                    icon: Icons.explore,
-                    onClick: () => context.go('/map/${defaultRoute.code}/${defaultStop.stopCode}'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: QuickAccessItem(
-                    title: 'ETA',
-                    icon: Icons.timer,
-                    onClick: () => context.go('/eta/${defaultRoute.code}/${defaultStop.stopCode}'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            PrimaryButton(
-              text: 'Cerrar sesión',
-              icon: Icons.logout,
-              backgroundColor: SmartColors.smartLightRed,
-              foregroundColor: SmartColors.smartRed,
-              onPressed: () {
-                sessionManager.logout();
-                context.go('/login');
+            GestureDetector(
+              onTap: () {
+                if (defaultRoute != null && defaultStop != null) {
+                  context.push('/map/${defaultRoute.code}/${defaultStop.stopCode}');
+                }
               },
+              child: Container(
+                height: 140,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: SmartColors.smartLightBlue,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: SmartColors.smartBorder),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.map, size: 40, color: SmartColors.smartBlue),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: SmartColors.smartBlue,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text('Abrir Mapa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
+            const SizedBox(height: 24),
+            const InfoBanner(text: 'Los datos mostrados son simulados en esta versión.'),
             const SizedBox(height: 32),
           ],
         ),
       ),
-    );
-  }
-}
-
-class QuickAccessItem extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final VoidCallback onClick;
-
-  const QuickAccessItem({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.onClick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onClick,
-      child: SmartRouteCard(
-        child: Column(
-          children: [
-            Icon(icon, color: SmartColors.smartBlue, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartText),
-            ),
-          ],
-        ),
-      ),
-    );
+    ));
   }
 }

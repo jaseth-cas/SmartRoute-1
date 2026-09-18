@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/colors.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class InfoBanner extends StatelessWidget {
   final String text;

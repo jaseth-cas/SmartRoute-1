@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
 
-import '../../data/mock/mock_data.dart';
-import '../theme/colors.dart';
-import '../components/student_bottom_bar.dart';
-import '../components/smart_route_card.dart';
-import '../components/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 
 class SimulatedMapScreen extends StatefulWidget {
   final String routeCode;
@@ -99,8 +99,15 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
     final currentDisplayRoute = isUToB ? "Universidad → Boulevard" : "Boulevard → Universidad";
     final currentVia = isUToB ? "VÍA ALTA" : "VÍA BAJA";
 
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+    return PopScope(
+      canPop: context.canPop(),
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          context.go('/student_home');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
         title: const Text('Simulador GPS en Bucle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.white,
@@ -275,7 +282,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => context.go('/eta/${widget.routeCode}/${widget.stopCode}'),
+                      onPressed: () => context.push('/eta/${widget.routeCode}/${widget.stopCode}'),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: SmartColors.smartBlue),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -291,7 +298,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
           ],
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildBusMarker(String busCode, Color color) {

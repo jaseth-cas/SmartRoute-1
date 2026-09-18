@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
-import '../components/session_info_card.dart';
-import '../components/primary_button.dart';
-import '../components/info_banner.dart';
+import '../../../nucleo/tema/colors.dart';
+import '../../../nucleo/widgets/smart_route_card.dart';
+import '../../../nucleo/widgets/session_info_card.dart';
+import '../../../nucleo/widgets/primary_button.dart';
+import '../../../nucleo/widgets/info_banner.dart';
 
 class StudentProfileScreen extends StatelessWidget {
   const StudentProfileScreen({super.key});
@@ -33,6 +33,12 @@ class StudentProfileScreen extends StatelessWidget {
             }
           },
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit, color: SmartColors.smartBlue),
+            onPressed: () => context.push('/edit_profile'),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

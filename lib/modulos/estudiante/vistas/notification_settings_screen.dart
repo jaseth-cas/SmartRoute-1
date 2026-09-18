@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../theme/colors.dart';
-import '../components/smart_route_card.dart';
-import '../components/section_title.dart';
-import '../components/primary_button.dart';
-import '../components/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
