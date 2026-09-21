@@ -182,7 +182,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 icon: Icons.lock,
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
-                    context.read<SessionManager>().login(selectedRole);
+                    // Extraer el nombre (lo que está antes del @)
+                    String customName = email;
+                    if (email.contains('@')) {
+                      customName = email.split('@')[0];
+                      // Poner la primera letra en mayúscula para que se vea como un nombre
+                      if (customName.isNotEmpty) {
+                        customName = customName[0].toUpperCase() + customName.substring(1);
+                      }
+                    }
+                    context.read<SessionManager>().login(selectedRole, customName: customName);
                     widget.onLoginSuccess();
                   }
                 },

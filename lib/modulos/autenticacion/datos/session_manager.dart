@@ -26,7 +26,7 @@ class JwtSession {
 /// Proveedor falso (Mock) de tokens JWT.
 /// Genera sesiones estáticas para los diferentes roles con fines de demostración.
 class FakeJwtProvider {
-  static JwtSession createSessionForRole(UserRole role) {
+  static JwtSession createSessionForRole(UserRole role, {String? customName}) {
     final issuedAt = DateTime.now().millisecondsSinceEpoch;
     final expiresAt = issuedAt + 3600000; // Expira en 1 hora
 
@@ -35,7 +35,7 @@ class FakeJwtProvider {
         return JwtSession(
           token: "fake.jwt.student.token",
           userId: 1,
-          name: "Ana Martínez",
+          name: customName ?? "Ana Martínez",
           email: "ana.estudiante@universidad.edu",
           role: UserRole.student,
           issuedAt: issuedAt,
@@ -45,7 +45,7 @@ class FakeJwtProvider {
         return JwtSession(
           token: "fake.jwt.admin.token",
           userId: 2,
-          name: "Admin SmartRoute",
+          name: customName ?? "Admin SmartRoute",
           email: "admin@smartroute.edu",
           role: UserRole.admin,
           issuedAt: issuedAt,
@@ -55,7 +55,7 @@ class FakeJwtProvider {
         return JwtSession(
           token: "fake.jwt.driver.token",
           userId: 3,
-          name: "Carlos Pérez",
+          name: customName ?? "Carlos Pérez",
           email: "carlos.conductor@transporte.edu",
           role: UserRole.driver,
           issuedAt: issuedAt,
@@ -65,7 +65,7 @@ class FakeJwtProvider {
         return JwtSession(
           token: "fake.jwt.owner.token",
           userId: 4,
-          name: "Transporte Universitario Penonomé",
+          name: customName ?? "Transporte Universitario Penonomé",
           email: "transportista@buses.edu",
           role: UserRole.owner,
           issuedAt: issuedAt,
@@ -85,8 +85,8 @@ class SessionManager extends ChangeNotifier {
   JwtSession? get currentSession => _currentSession;
 
   /// Inicia sesión simulando una respuesta del servidor basándose en el rol.
-  void login(UserRole role) {
-    _currentSession = FakeJwtProvider.createSessionForRole(role);
+  void login(UserRole role, {String? customName}) {
+    _currentSession = FakeJwtProvider.createSessionForRole(role, customName: customName);
     notifyListeners(); // Notifica a la app para reconstruir la interfaz
   }
 

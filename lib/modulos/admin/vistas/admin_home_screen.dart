@@ -97,26 +97,7 @@ class AdminHomeScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _AdminMetricCard(
-                    icon: Icons.directions_bus,
-                    value: '2',
-                    label: 'Autobuses\nen Flota',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _AdminMetricCard(
-                    icon: Icons.satellite_alt,
-                    value: '1',
-                    label: 'GPS\nActivos',
-                  ),
-                ),
-              ],
-            ),
+
             const SizedBox(height: 32),
             const Text('Acciones de Gestión', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
             const SizedBox(height: 16),
@@ -139,12 +120,7 @@ class AdminHomeScreen extends StatelessWidget {
                     icon: Icons.place,
                     onClick: () => context.push('/manage_stops'),
                   ),
-                  const Divider(height: 1, color: SmartColors.smartBorder),
-                  _AdminNavOption(
-                    title: 'Gestionar autobuses',
-                    icon: Icons.directions_bus,
-                    onClick: () => context.push('/manage_buses'),
-                  ),
+
                 ],
               ),
             ),

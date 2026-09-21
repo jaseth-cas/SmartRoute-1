@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 
 class MockData {
@@ -28,7 +30,7 @@ class MockData {
     ),
   ];
 
-  static final List<RouteMock> routes = [
+  static List<RouteMock> routes = [
     RouteMock(
       id: 1,
       code: 'R-UB',
@@ -56,6 +58,21 @@ class MockData {
       isFavorite: false,
     ),
   ];
+
+  static Future<void> loadRoutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final routesJson = prefs.getString('saved_routes');
+    if (routesJson != null) {
+      final List<dynamic> decodedList = jsonDecode(routesJson);
+      routes = decodedList.map((json) => RouteMock.fromJson(json)).toList();
+    }
+  }
+
+  static Future<void> saveRoutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final routesJson = jsonEncode(routes.map((r) => r.toJson()).toList());
+    await prefs.setString('saved_routes', routesJson);
+  }
 
   static final List<StopMock> stops = [
     // Paradas para R-UB (Universidad -> Boulevard)

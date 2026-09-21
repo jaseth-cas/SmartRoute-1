@@ -7,6 +7,7 @@ import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/smart_route_card.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
+import '../utilidades/admin_validators.dart';
 
 class ManageRoutesScreen extends StatefulWidget {
   const ManageRoutesScreen({super.key});
@@ -16,13 +17,28 @@ class ManageRoutesScreen extends StatefulWidget {
 }
 
 class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
-  late List<RouteMock> routesList;
+  late List<RouteMock> routesList = [];
   int routeCounter = 3;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    routesList = List.from(MockData.routes);
+    _loadLocalRoutes();
+  }
+
+  Future<void> _loadLocalRoutes() async {
+    await MockData.loadRoutes();
+    setState(() {
+      routesList = List.from(MockData.routes);
+      if (MockData.routes.isNotEmpty) {
+        final maxId = MockData.routes.map((r) => r.id).reduce((a, b) => a > b ? a : b);
+        routeCounter = maxId + 1;
+      } else {
+        routeCounter = 1;
+      }
+      _isLoading = false;
+    });
   }
 
   void _showAddRouteDialog() {
@@ -31,78 +47,210 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
     String newOrigin = "";
     String newDestination = "";
 
+    String? errorMessage;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Agregar Nueva Ruta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                CustomTextField(
-                  label: 'Nombre de la Ruta',
-                  hint: 'Ej. Ruta Periférica',
-                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
-                  onChanged: (val) => newName = val,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Agregar Nueva Ruta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: SmartColors.smartLightRed, borderRadius: BorderRadius.circular(8)),
+                          child: Text(errorMessage!, style: const TextStyle(color: SmartColors.smartRed, fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      CustomTextField(
+                        label: 'Nombre de la Ruta',
+                        hint: 'Ej. Ruta Periférica',
+                        validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                        onChanged: (val) => newName = val,
+                      ),
+                      const SizedBox(height: 12),
+                      CustomTextField(
+                        label: 'Origen',
+                        hint: 'Ej. Terminal Norte',
+                        validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                        onChanged: (val) => newOrigin = val,
+                      ),
+                      const SizedBox(height: 12),
+                      CustomTextField(
+                        label: 'Destino',
+                        hint: 'Ej. Universidad',
+                        validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+                        onChanged: (val) => newDestination = val,
+                      ),
+                      const SizedBox(height: 24),
+                      PrimaryButton(
+                        text: 'Crear Ruta',
+                        icon: Icons.add_road,
+                        onPressed: () {
+                          // Usa el nuevo validador (Caja Blanca) para verificar los campos
+                          final validationError = AdminRouteValidator.validateNewRouteData(
+                            name: newName,
+                            origin: newOrigin,
+                            destination: newDestination,
+                          );
+
+                          if (validationError != null) {
+                            setModalState(() {
+                              errorMessage = validationError;
+                            });
+                            return;
+                          }
+
+                          // Happy path (Todos los datos son válidos)
+                          final newRoute = RouteMock(
+                            id: routeCounter,
+                            code: 'R-NUEVA-$routeCounter',
+                            name: newName,
+                            origin: newOrigin,
+                            destination: newDestination,
+                            status: 'Activa',
+                            etaMinutes: 0,
+                            busCode: 'N/A',
+                            direction: RouteDirection.boulevardToUniversity,
+                            description: 'Ruta añadida dinámicamente',
+                            isFavorite: false,
+                          );
+                          setState(() {
+                            routesList.insert(0, newRoute);
+                            MockData.routes.insert(0, newRoute); // Guardar globalmente en la memoria de la app
+                            routeCounter++;
+                          });
+                          MockData.saveRoutes(); // Guardar en SharedPreferences
+                          Navigator.pop(context);
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  label: 'Origen',
-                  hint: 'Ej. Terminal Norte',
-                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
-                  onChanged: (val) => newOrigin = val,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditRouteDialog(RouteMock route, int index) {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController(text: route.name);
+    final originCtrl = TextEditingController(text: route.origin);
+    final destCtrl = TextEditingController(text: route.destination);
+
+    String? errorMessage;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Editar Ruta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: SmartColors.smartLightRed, borderRadius: BorderRadius.circular(8)),
+                          child: Text(errorMessage!, style: const TextStyle(color: SmartColors.smartRed, fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      CustomTextField(
+                        label: 'Nombre de la Ruta',
+                        controller: nameCtrl,
+                      ),
+                      const SizedBox(height: 12),
+                      CustomTextField(
+                        label: 'Origen',
+                        controller: originCtrl,
+                      ),
+                      const SizedBox(height: 12),
+                      CustomTextField(
+                        label: 'Destino',
+                        controller: destCtrl,
+                      ),
+                      const SizedBox(height: 24),
+                      PrimaryButton(
+                        text: 'Guardar Cambios',
+                        icon: Icons.save,
+                        onPressed: () {
+                          final validationError = AdminRouteValidator.validateNewRouteData(
+                            name: nameCtrl.text,
+                            origin: originCtrl.text,
+                            destination: destCtrl.text,
+                          );
+
+                          if (validationError != null) {
+                            setModalState(() {
+                              errorMessage = validationError;
+                            });
+                            return;
+                          }
+
+                          final updatedRoute = route.copyWith(
+                            name: nameCtrl.text,
+                            origin: originCtrl.text,
+                            destination: destCtrl.text,
+                          );
+
+                          setState(() {
+                            routesList[index] = updatedRoute;
+                            final mockIndex = MockData.routes.indexWhere((r) => r.id == route.id);
+                            if (mockIndex != -1) {
+                              MockData.routes[mockIndex] = updatedRoute;
+                            }
+                          });
+                          MockData.saveRoutes(); // Guardar cambios en SharedPreferences
+                          Navigator.pop(context);
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  label: 'Destino',
-                  hint: 'Ej. Universidad',
-                  validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
-                  onChanged: (val) => newDestination = val,
-                ),
-                const SizedBox(height: 24),
-                PrimaryButton(
-                  text: 'Crear Ruta',
-                  icon: Icons.add_road,
-                  onPressed: () {
-                    if (formKey.currentState!.validate()) {
-                      final newRoute = RouteMock(
-                        id: routeCounter,
-                        code: 'R-NUEVA-$routeCounter',
-                        name: newName,
-                        origin: newOrigin,
-                        destination: newDestination,
-                        status: 'Activa',
-                        etaMinutes: 0,
-                        busCode: 'N/A',
-                        direction: RouteDirection.boulevardToUniversity,
-                        description: 'Ruta añadida dinámicamente',
-                        isFavorite: false,
-                      );
-                      setState(() {
-                        routesList.insert(0, newRoute);
-                        routeCounter++;
-                      });
-                      Navigator.pop(context);
-                    }
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -137,6 +285,9 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
               style: TextStyle(fontSize: 12, color: SmartColors.smartGray),
             ),
           ),
+          if (_isLoading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: ElevatedButton.icon(
@@ -161,21 +312,31 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
                 final route = routesList[index];
                 return _ManageRouteItem(
                   route: route,
+                  onEdit: () => _showEditRouteDialog(route, index),
                   onDelete: () {
                     setState(() {
-                      routesList.removeAt(index);
+                      MockData.routes.removeWhere((r) => r.id == route.id); // Global
+                      routesList.removeAt(index); // Local UI
                     });
+                    MockData.saveRoutes(); // Guardar en SharedPreferences
                   },
                   onToggleStatus: () {
                     setState(() {
                       final newStatus = route.status == "Activa" ? "Inactiva" : "Activa";
-                      routesList[index] = route.copyWith(status: newStatus);
+                      final updated = route.copyWith(status: newStatus);
+                      routesList[index] = updated;
+                      final mockIndex = MockData.routes.indexWhere((r) => r.id == route.id);
+                      if (mockIndex != -1) {
+                        MockData.routes[mockIndex] = updated;
+                      }
                     });
+                    MockData.saveRoutes(); // Guardar en SharedPreferences
                   },
                 );
               },
             ),
           ),
+          ],
         ],
       ),
     );
@@ -187,10 +348,13 @@ class _ManageRouteItem extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onToggleStatus;
 
+  final VoidCallback onEdit;
+
   const _ManageRouteItem({
     required this.route,
     required this.onDelete,
     required this.onToggleStatus,
+    required this.onEdit,
   });
 
   @override
@@ -236,9 +400,7 @@ class _ManageRouteItem extends StatelessWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.edit, color: SmartColors.smartGray),
-                onPressed: () {
-                  // Simulated Edit
-                },
+                onPressed: onEdit,
               ),
             ],
           ),

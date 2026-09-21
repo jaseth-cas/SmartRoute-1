@@ -96,6 +96,41 @@ class RouteMock {
       isFavorite: isFavorite ?? this.isFavorite,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'code': code,
+      'name': name,
+      'origin': origin,
+      'destination': destination,
+      'status': status,
+      'etaMinutes': etaMinutes,
+      'busCode': busCode,
+      'direction': direction.name, // Guardar el enum como string
+      'description': description,
+      'isFavorite': isFavorite,
+    };
+  }
+
+  factory RouteMock.fromJson(Map<String, dynamic> json) {
+    return RouteMock(
+      id: json['id'],
+      code: json['code'],
+      name: json['name'],
+      origin: json['origin'],
+      destination: json['destination'],
+      status: json['status'],
+      etaMinutes: json['etaMinutes'],
+      busCode: json['busCode'],
+      direction: RouteDirection.values.firstWhere(
+        (e) => e.name == json['direction'],
+        orElse: () => RouteDirection.boulevardToUniversity,
+      ),
+      description: json['description'],
+      isFavorite: json['isFavorite'] ?? false,
+    );
+  }
 }
 
 /// Modelo de datos para las Paradas (Stops).
@@ -124,6 +159,32 @@ class StopMock {
     this.longitude,
     required this.isFavorite,
   });
+
+  StopMock copyWith({
+    int? id,
+    String? routeCode,
+    String? stopCode,
+    String? name,
+    String? reference,
+    int? order,
+    double? distanceFromStartKm,
+    double? latitude,
+    double? longitude,
+    bool? isFavorite,
+  }) {
+    return StopMock(
+      id: id ?? this.id,
+      routeCode: routeCode ?? this.routeCode,
+      stopCode: stopCode ?? this.stopCode,
+      name: name ?? this.name,
+      reference: reference ?? this.reference,
+      order: order ?? this.order,
+      distanceFromStartKm: distanceFromStartKm ?? this.distanceFromStartKm,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      isFavorite: isFavorite ?? this.isFavorite,
+    );
+  }
 }
 
 class NotificationMock {
