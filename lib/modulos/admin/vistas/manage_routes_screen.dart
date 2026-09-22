@@ -7,6 +7,7 @@ import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/smart_route_card.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
+import '../../../nucleo/widgets/admin_bottom_bar.dart';
 import '../utilidades/admin_validators.dart';
 
 class ManageRoutesScreen extends StatefulWidget {
@@ -258,24 +259,21 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
-      appBar: AppBar(
-        title: const Text('Gestión de rutas', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/admin_home');
-            }
-          },
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Gestión de rutas', style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartBlue)),
+          backgroundColor: Colors.white,
+          elevation: 1,
         ),
-      ),
-      body: Column(
+        bottomNavigationBar: AdminBottomBar(
+          currentRoute: '/manage_routes',
+          onNavigate: (route) => context.go(route),
+        ),
+        body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
@@ -338,6 +336,7 @@ class _ManageRoutesScreenState extends State<ManageRoutesScreen> {
           ),
           ],
         ],
+      ),
       ),
     );
   }

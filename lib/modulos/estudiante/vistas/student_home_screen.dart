@@ -30,7 +30,7 @@ class StudentHomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            const FlutterLogo(size: 32),
+            Image.asset('assets/images/logo2.png', width: 28, height: 28, fit: BoxFit.contain),
             const SizedBox(width: 8),
             const Text(
               'SmartRoute',

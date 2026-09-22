@@ -74,7 +74,22 @@ class MockData {
     await prefs.setString('saved_routes', routesJson);
   }
 
-  static final List<StopMock> stops = [
+  static Future<void> loadStops() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stopsJson = prefs.getString('saved_stops');
+    if (stopsJson != null) {
+      final List<dynamic> decodedList = jsonDecode(stopsJson);
+      stops = decodedList.map((json) => StopMock.fromJson(json)).toList();
+    }
+  }
+
+  static Future<void> saveStops() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stopsJson = jsonEncode(stops.map((s) => s.toJson()).toList());
+    await prefs.setString('saved_stops', stopsJson);
+  }
+
+  static List<StopMock> stops = [
     // Paradas para R-UB (Universidad -> Boulevard)
     StopMock(
       id: 11,

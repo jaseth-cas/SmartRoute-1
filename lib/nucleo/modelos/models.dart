@@ -185,6 +185,36 @@ class StopMock {
       isFavorite: isFavorite ?? this.isFavorite,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'routeCode': routeCode,
+      'stopCode': stopCode,
+      'name': name,
+      'reference': reference,
+      'order': order,
+      'distanceFromStartKm': distanceFromStartKm,
+      'latitude': latitude,
+      'longitude': longitude,
+      'isFavorite': isFavorite,
+    };
+  }
+
+  factory StopMock.fromJson(Map<String, dynamic> json) {
+    return StopMock(
+      id: json['id'],
+      routeCode: json['routeCode'],
+      stopCode: json['stopCode'],
+      name: json['name'],
+      reference: json['reference'],
+      order: json['order'],
+      distanceFromStartKm: json['distanceFromStartKm']?.toDouble() ?? 0.0,
+      latitude: json['latitude']?.toDouble(),
+      longitude: json['longitude']?.toDouble(),
+      isFavorite: json['isFavorite'] ?? false,
+    );
+  }
 }
 
 class NotificationMock {

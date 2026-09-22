@@ -50,8 +50,25 @@ class _AssignStopsScreenState extends State<AssignStopsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save, color: SmartColors.smartBlue),
-            onPressed: () {
-              // Simulated save
+            onPressed: () async {
+              // Aplicar cambios en MockData
+              for (int i = 0; i < MockData.stops.length; i++) {
+                final stop = MockData.stops[i];
+                final isSelected = stopSelectionState[stop.stopCode] ?? false;
+                
+                if (isSelected) {
+                  // Asignar a esta ruta
+                  MockData.stops[i] = stop.copyWith(routeCode: widget.routeCode);
+                } else if (stop.routeCode == widget.routeCode) {
+                  // Desvincular de esta ruta si fue deseleccionada
+                  MockData.stops[i] = stop.copyWith(routeCode: 'R-N/A');
+                }
+              }
+              
+              // Guardar en SharedPreferences
+              await MockData.saveStops();
+
+              if (!context.mounted) return;
               if (context.canPop()) {
                 context.pop();
               } else {

@@ -5,29 +5,27 @@ import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/admin_bottom_bar.dart';
 
 class ManageBusesScreen extends StatelessWidget {
   const ManageBusesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
-      appBar: AppBar(
-        title: const Text('Gestión de autobuses simulados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/admin_home');
-            }
-          },
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: SmartColors.smartBackground,
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Gestión de autobuses simulados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: SmartColors.smartBlue)),
+          backgroundColor: Colors.white,
+          elevation: 1,
         ),
-      ),
+        bottomNavigationBar: AdminBottomBar(
+          currentRoute: '/manage_buses',
+          onNavigate: (route) => context.go(route),
+        ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -49,6 +47,7 @@ class ManageBusesScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
