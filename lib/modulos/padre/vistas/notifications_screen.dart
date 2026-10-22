@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
@@ -16,6 +16,17 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   bool notificationsEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalNotifications();
+  }
+
+  Future<void> _loadLocalNotifications() async {
+    await MockData.loadNotifications();
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {

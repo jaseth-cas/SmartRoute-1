@@ -1,35 +1,29 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/modulos/splash/vistas/splash_screen.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/vistas/login_screen.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/vistas/permission_gate_screen.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/vistas/register_screen.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/vistas/role_home_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/student_home_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/routes_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/route_detail_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/stops_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/stop_detail_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/simulated_map_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/eta_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/notifications_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/notification_settings_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/student_profile_screen.dart';
-import 'package:smartroute_flutter/modulos/estudiante/vistas/edit_profile_screen.dart';
-import 'package:smartroute_flutter/modulos/admin/vistas/admin_home_screen.dart';
-import 'package:smartroute_flutter/modulos/admin/vistas/manage_routes_screen.dart';
-import 'package:smartroute_flutter/modulos/admin/vistas/manage_buses_screen.dart';
-import 'package:smartroute_flutter/modulos/admin/vistas/manage_stops_screen.dart';
-import 'package:smartroute_flutter/modulos/admin/vistas/assign_stops_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_home_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/routes_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/route_detail_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/stops_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/stop_detail_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/simulated_map_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/eta_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/notifications_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/notification_settings_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_profile_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/edit_profile_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_home_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_demand_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/report_incident_screen.dart';
-import 'package:smartroute_flutter/modulos/propietario/vistas/owner_home_screen.dart';
-import 'package:smartroute_flutter/modulos/propietario/vistas/owner_map_screen.dart';
-import 'package:smartroute_flutter/modulos/propietario/vistas/register_bus_screen.dart';
+import 'package:smartroute_flutter/modulos/transportista/vistas/owner_home_screen.dart';
+import 'package:smartroute_flutter/modulos/transportista/vistas/owner_map_screen.dart';
+import 'package:smartroute_flutter/modulos/transportista/vistas/register_bus_screen.dart';
 
 /// Clase principal para el enrutamiento de la aplicación utilizando GoRouter.
 /// GoRouter facilita la navegación declarativa y el soporte de enlaces profundos (deep links).
@@ -45,8 +39,12 @@ class AppRouter {
         GoRoute(
           path: '/splash',
           builder: (context, state) => SplashScreen(
-            onStartClick: () => context.go('/login'),
+            onStartClick: () => context.go('/permissions'),
           ),
+        ),
+        GoRoute(
+          path: '/permissions',
+          builder: (context, state) => const PermissionGateScreen(),
         ),
         GoRoute(
           path: '/login',
@@ -66,9 +64,6 @@ class AppRouter {
               switch (role) {
                 case UserRole.student:
                   context.go('/student_home');
-                  break;
-                case UserRole.admin:
-                  context.go('/admin_home');
                   break;
                 case UserRole.driver:
                   context.go('/driver_home');
@@ -151,28 +146,6 @@ class AppRouter {
           builder: (context, state) => const EditProfileScreen(),
         ),
         GoRoute(
-          path: '/admin_home',
-          builder: (context, state) => const AdminHomeScreen(),
-        ),
-        GoRoute(
-          path: '/manage_routes',
-          builder: (context, state) => const ManageRoutesScreen(),
-        ),
-        GoRoute(
-          path: '/manage_buses',
-          builder: (context, state) => const ManageBusesScreen(),
-        ),
-        GoRoute(
-          path: '/manage_stops',
-          builder: (context, state) => const ManageStopsScreen(),
-        ),
-        GoRoute(
-          path: '/assign_stops/:routeCode',
-          builder: (context, state) => AssignStopsScreen(
-            routeCode: state.pathParameters['routeCode']!,
-          ),
-        ),
-        GoRoute(
           path: '/driver_home',
           builder: (context, state) => const DriverHomeScreen(),
         ),
@@ -202,6 +175,7 @@ class AppRouter {
         final isLoggedIn = sessionManager.isLoggedIn;
         final isGoingToAuth = state.matchedLocation == '/login' || 
                               state.matchedLocation == '/splash' ||
+                              state.matchedLocation == '/permissions' ||
                               state.matchedLocation == '/register';
         
         if (!isLoggedIn && !isGoingToAuth) {

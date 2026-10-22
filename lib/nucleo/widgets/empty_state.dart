@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class EmptyState extends StatelessWidget {

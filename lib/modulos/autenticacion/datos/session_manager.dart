@@ -41,16 +41,6 @@ class FakeJwtProvider {
           issuedAt: issuedAt,
           expiresAt: expiresAt,
         );
-      case UserRole.admin:
-        return JwtSession(
-          token: "fake.jwt.admin.token",
-          userId: 2,
-          name: customName ?? "Admin SmartRoute",
-          email: "admin@smartroute.edu",
-          role: UserRole.admin,
-          issuedAt: issuedAt,
-          expiresAt: expiresAt,
-        );
       case UserRole.driver:
         return JwtSession(
           token: "fake.jwt.driver.token",

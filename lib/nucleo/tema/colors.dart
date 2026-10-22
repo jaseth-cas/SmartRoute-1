@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class SmartColors {
   static const Color smartBlue = Color(0xFF2563EB); // Indigo/Sapphire Blue (Premium)

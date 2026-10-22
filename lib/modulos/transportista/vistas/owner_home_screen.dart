@@ -15,6 +15,7 @@ class OwnerHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
+    final financialSummary = MockData.getFleetFinancialSummary();
 
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
@@ -46,6 +47,7 @@ class OwnerHomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Perfil
             Row(
               children: [
                 Container(
@@ -55,16 +57,16 @@ class OwnerHomeScreen extends StatelessWidget {
                     color: SmartColors.smartLightBlue,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.person, color: SmartColors.smartBlue, size: 32),
+                  child: const Icon(Icons.business_center, color: SmartColors.smartBlue, size: 30),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('¡Bienvenido!', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                      const Text('Panel de Dueño de Flota', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
                       Text(
-                        session?.name ?? "Transportista",
+                        session?.name ?? "Transportes Gómez",
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SmartColors.smartBlue, height: 1.2),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -74,56 +76,83 @@ class OwnerHomeScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            // Sello Trust & Safety de la Empresa
             SmartRouteCard(
-              color: SmartColors.smartLightBlue.withValues(alpha: 0.5),
+              color: SmartColors.smartLightGreen.withValues(alpha: 0.5),
               child: Row(
                 children: [
-                  const Icon(Icons.verified_user, color: SmartColors.smartBlue, size: 20),
+                  const Icon(Icons.verified, color: SmartColors.smartGreen, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: const [
-                            Text('Rol actual: ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                            Text('OWNER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SmartColors.smartBlue)),
-                          ],
-                        ),
-                        Text('JWT simulado: ${sessionManager.currentToken ?? "N/A"}', style: const TextStyle(fontSize: 10, color: SmartColors.smartGray)),
+                      children: const [
+                        Text('Flota Certificada SmartRoute', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
+                        Text('Conductores con verificación de antecedentes y RTM aprobados.', style: TextStyle(fontSize: 10, color: SmartColors.smartText)),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
+
+            // --- MÉTRICAS DE NEGOCIO (SAAS / MARKETPLACE DE TRANSPORTISTAS) ---
+            const Text('Rendimiento del Negocio (Octubre)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _BusinessMetricCard(
+                  title: 'Ocupación de Cupos',
+                  value: '${financialSummary.occupiedSeats}/${financialSummary.totalSeats}',
+                  subtitle: '${financialSummary.occupancyRate.toStringAsFixed(0)}% Asientos ocupados',
+                  icon: Icons.event_seat,
+                  color: SmartColors.smartBlue,
+                  bgColor: SmartColors.smartLightBlue,
+                ),
+                const SizedBox(width: 12),
+                _BusinessMetricCard(
+                  title: 'Recaudación Mes',
+                  value: '\$${financialSummary.totalRevenue.toInt()}',
+                  subtitle: '${financialSummary.pendingPaymentsCount} Cobro en mora',
+                  icon: Icons.monetization_on,
+                  color: SmartColors.smartGreen,
+                  bgColor: SmartColors.smartLightGreen,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Botones de acción
             ElevatedButton.icon(
               onPressed: () => context.push('/register_bus'),
               icon: const Icon(Icons.add),
-              label: const Text('Registrar nuevo autobús', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('Registrar nuevo autobús escolar', style: TextStyle(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: SmartColors.smartBlue,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: () => context.push('/owner_map'),
               icon: const Icon(Icons.map),
-              label: const Text('Ver mapa de flota', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('Monitoreo GPS de flota en vivo', style: TextStyle(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: SmartColors.smartDarkBlue,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 24),
-            const Text('Mis Autobuses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
+
+            // Mis Autobuses Escolares
+            const Text('Mis Unidades Escolares', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
             const SizedBox(height: 12),
             ListView.separated(
               shrinkWrap: true,
@@ -135,7 +164,50 @@ class OwnerHomeScreen extends StatelessWidget {
               },
             ),
             const SizedBox(height: 24),
-            const Text('Historial básico de recorridos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+
+            // Resumen de Cobro a Padres (Marketplace / SaaS)
+            const Text('Control de Cobros de Mensualidades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 12),
+            SmartRouteCard(
+              child: Column(
+                children: [
+                  ...MockData.passengers.take(3).map((p) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('Tutor: ${p.parentName}', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: p.paymentStatus == 'Al día' ? SmartColors.smartLightGreen : SmartColors.smartLightRed,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            p.paymentStatus,
+                            style: TextStyle(
+                              color: p.paymentStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Historial de recorridos
+            const Text('Historial reciente de recorridos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 12),
             SmartRouteCard(
               child: Row(
@@ -146,9 +218,9 @@ class OwnerHomeScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
-                        _HistoryRow(text: 'BUS-01 completó recorrido Universidad - Centro'),
+                        _HistoryRow(text: 'BUS-01 completó recorrido hacia Colegio San José'),
                         SizedBox(height: 4),
-                        _HistoryRow(text: 'BUS-02 disponible para asignación'),
+                        _HistoryRow(text: 'BUS-02 disponible para jornada de la tarde'),
                       ],
                     ),
                   ),
@@ -156,6 +228,8 @@ class OwnerHomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+
+            // Cerrar sesión
             ElevatedButton.icon(
               onPressed: () {
                 sessionManager.logout();
@@ -166,11 +240,62 @@ class OwnerHomeScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: SmartColors.smartRed,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessMetricCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+
+  const _BusinessMetricCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: SmartColors.smartBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: bgColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
+            const SizedBox(height: 2),
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 10, color: SmartColors.smartGray), maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -232,7 +357,7 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
         return AlertDialog(
           backgroundColor: Colors.white,
           title: const Text('Editar Autobús', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Text('Modifica la placa, el modelo o el estado general de la unidad ${widget.bus.code}.'),
+          content: Text('Modifica la placa, el modelo o la capacidad de asientos de la unidad ${widget.bus.code}.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -302,8 +427,8 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Expanded(child: _OwnerDetailCol(icon: Icons.fiber_manual_record, label: 'Estado:', value: widget.bus.status, iconColor: widget.bus.status == 'Disponible' ? SmartColors.smartBlue : SmartColors.smartGreen)),
-                        Expanded(child: _OwnerDetailCol(icon: Icons.alt_route, label: 'Ruta:', value: widget.bus.routeName ?? 'No asignada')),
+                        Expanded(child: _OwnerDetailCol(icon: Icons.event_seat, label: 'Cupos:', value: '${widget.bus.seatsOccupied}/${widget.bus.capacity}')),
+                        Expanded(child: _OwnerDetailCol(icon: Icons.school, label: 'Colegio:', value: widget.bus.schoolName ?? 'No asignado')),
                       ],
                     ),
                   ],
@@ -353,20 +478,18 @@ class _OwnerDetailCol extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final Color iconColor;
 
   const _OwnerDetailCol({
     required this.icon,
     required this.label,
     required this.value,
-    this.iconColor = SmartColors.smartGray,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: iconColor, size: 12),
+        Icon(icon, color: SmartColors.smartGray, size: 12),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
         const SizedBox(width: 4),

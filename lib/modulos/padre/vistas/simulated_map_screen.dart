@@ -1,7 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
@@ -23,65 +26,94 @@ class SimulatedMapScreen extends StatefulWidget {
   State<SimulatedMapScreen> createState() => _SimulatedMapScreenState();
 }
 
-class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTickerProviderStateMixin {
+class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   String lastUpdate = "Hace unos segundos";
   bool isUpdating = false;
 
-  final List<Offset> fullLoopPath = const [
-    // Segment 1
-    Offset(0.89, 0.96), Offset(0.85, 0.79), Offset(0.82, 0.66),
-    Offset(0.80, 0.53), Offset(0.73, 0.42), Offset(0.65, 0.31),
-    Offset(0.49, 0.21), Offset(0.46, 0.15), Offset(0.38, 0.10),
-    Offset(0.31, 0.16), Offset(0.28, 0.23), Offset(0.25, 0.29),
-    Offset(0.19, 0.49), Offset(0.11, 0.69), Offset(0.07, 0.81),
-    Offset(0.04, 0.93),
-    // Segment 2
-    Offset(0.04, 0.93), Offset(0.16, 0.58), Offset(0.19, 0.49),
-    Offset(0.23, 0.38), Offset(0.63, 0.25), Offset(0.65, 0.31),
-    Offset(0.73, 0.42), Offset(0.80, 0.53), Offset(0.82, 0.66),
-    Offset(0.85, 0.79), Offset(0.89, 0.96),
+  final MapController _mapController = MapController();
+  LatLng? _currentPosition;
+  bool _isLoadingLocation = true;
+
+  // Ruta simulada de los buses para no dejar el mapa vacío
+  final List<LatLng> fullLoopPath = const [
+    LatLng(9.9322, -84.0795),
+    LatLng(9.9335, -84.0792),
+    LatLng(9.9348, -84.0789),
+    LatLng(9.9360, -84.0785),
+    LatLng(9.9358, -84.0770),
+    LatLng(9.9345, -84.0772),
+    LatLng(9.9332, -84.0775),
+    LatLng(9.9318, -84.0778),
   ];
 
   int currentPointIndex = 0;
   Timer? loopTimer;
-  late AnimationController _animationController;
-  late Animation<Offset> _positionAnimation;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(vsync: this, duration: const Duration(seconds: 3));
-    
-    _positionAnimation = Tween<Offset>(
-      begin: fullLoopPath[currentPointIndex],
-      end: fullLoopPath[currentPointIndex],
-    ).animate(_animationController);
+    _determinePosition();
 
-    loopTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+    // Mover el bus cada 2 segundos
+    loopTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isUpdating && mounted) {
-        final nextIndex = (currentPointIndex + 1) % fullLoopPath.length;
         setState(() {
-          _positionAnimation = Tween<Offset>(
-            begin: fullLoopPath[currentPointIndex],
-            end: fullLoopPath[nextIndex],
-          ).animate(_animationController);
-          currentPointIndex = nextIndex;
+          currentPointIndex = (currentPointIndex + 1) % fullLoopPath.length;
         });
-        _animationController.forward(from: 0.0);
       }
     });
+  }
+
+  Future<void> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _isLoadingLocation = false);
+      return Future.error('Location services are disabled.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() => _isLoadingLocation = false);
+        return Future.error('Location permissions are denied');
+      }
+    }
+    
+    if (permission == LocationPermission.deniedForever) {
+      setState(() => _isLoadingLocation = false);
+      return Future.error('Location permissions are permanently denied, we cannot request permissions.');
+    } 
+
+    try {
+      Position position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _isLoadingLocation = false;
+        });
+        _mapController.move(_currentPosition!, 15.5);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
+    }
   }
 
   @override
   void dispose() {
     loopTimer?.cancel();
-    _animationController.dispose();
     super.dispose();
   }
 
   void _syncData() async {
     setState(() => isUpdating = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
+    await _determinePosition();
+    await Future.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() {
         lastUpdate = "Actualizado ahora";
@@ -95,7 +127,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
     final route = MockData.getRouteByCode(widget.routeCode);
     final bus = MockData.getBusByCode(route?.busCode ?? "BUS-01");
 
-    final isUToB = currentPointIndex <= 15;
+    final isUToB = currentPointIndex <= 3;
     final currentDisplayRoute = isUToB ? "Universidad → Boulevard" : "Boulevard → Universidad";
     final currentVia = isUToB ? "VÍA ALTA" : "VÍA BAJA";
 
@@ -109,7 +141,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
       child: Scaffold(
         backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
-        title: const Text('Simulador GPS en Bucle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: const Text('Mapa Real (Tu Ubicación)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
@@ -133,74 +165,102 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InfoBanner(
-                text: "Bucle infinito: Universidad ↔ Boulevard (Ambos sentidos)",
-                icon: Icons.autorenew,
+                text: "Mapa centrado en tu ubicación real (GPS).",
+                icon: Icons.my_location,
               ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: AspectRatio(
-                aspectRatio: 1024 / 680,
+                aspectRatio: 1024 / 800,
                 child: Container(
                   decoration: BoxDecoration(
                     color: SmartColors.smartLightBlue,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: SmartColors.smartBorder),
                   ),
-                  child: Stack(
-                    children: [
-                      // Map image
-                      Positioned.fill(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            'assets/images/img.png',
-                            fit: BoxFit.cover,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: _currentPosition ?? const LatLng(9.9335, -84.0785),
+                            initialZoom: 15.5,
                           ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.example.smartroute',
+                            ),
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: [...fullLoopPath, fullLoopPath.first],
+                                  color: SmartColors.smartBlue,
+                                  strokeWidth: 4.0,
+                                ),
+                              ],
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                if (_currentPosition != null)
+                                  Marker(
+                                    point: _currentPosition!,
+                                    width: 40,
+                                    height: 40,
+                                    child: _buildUserMarker(),
+                                  ),
+                                Marker(
+                                  point: fullLoopPath[currentPointIndex],
+                                  width: 60,
+                                  height: 60,
+                                  child: _buildBusMarker(bus?.code ?? "BUS-01", SmartColors.smartBlue),
+                                ),
+                                Marker(
+                                  point: fullLoopPath[(currentPointIndex + 4) % fullLoopPath.length],
+                                  width: 60,
+                                  height: 60,
+                                  child: _buildBusMarker("BUS-02", SmartColors.smartGreen),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      AnimatedBuilder(
-                        animation: _positionAnimation,
-                        builder: (context, child) {
-                          return LayoutBuilder(
-                            builder: (context, constraints) {
-                              // Bus 1 coordinates
-                              final x1 = constraints.maxWidth * _positionAnimation.value.dx - 18;
-                              final y1 = constraints.maxHeight * _positionAnimation.value.dy - 18;
-                              
-                              // Bus 2 coordinates (slightly behind or offset)
-                              final p2Index = (currentPointIndex + 6) % fullLoopPath.length;
-                              final p2NextIndex = (p2Index + 1) % fullLoopPath.length;
-                              final p2Val = Offset.lerp(fullLoopPath[p2Index], fullLoopPath[p2NextIndex], _animationController.value)!;
-                              final x2 = constraints.maxWidth * p2Val.dx - 18;
-                              final y2 = constraints.maxHeight * p2Val.dy - 18;
-
-                              return Stack(
+                        if (_isLoadingLocation)
+                          Container(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Positioned(
-                                    left: x2,
-                                    top: y2,
-                                    child: _buildBusMarker("BUS-02", SmartColors.smartGreen),
-                                  ),
-                                  Positioned(
-                                    left: x1,
-                                    top: y1,
-                                    child: _buildBusMarker(bus?.code ?? "BUS-01", SmartColors.smartBlue),
-                                  ),
+                                  CircularProgressIndicator(color: SmartColors.smartBlue),
+                                  SizedBox(height: 12),
+                                  Text("Obteniendo tu ubicación...", style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartBlue)),
                                 ],
-                              );
-                            },
-                          );
-                        },
-                      ),
-                      if (isUpdating)
-                        Container(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          child: const Center(
-                            child: CircularProgressIndicator(color: SmartColors.smartBlue),
+                              ),
+                            ),
+                          ),
+                        if (isUpdating)
+                          Container(
+                            color: Colors.white.withValues(alpha: 0.3),
+                            child: const Center(
+                              child: CircularProgressIndicator(color: SmartColors.smartBlue),
+                            ),
+                          ),
+                        Positioned(
+                          right: 16,
+                          bottom: 16,
+                          child: FloatingActionButton(
+                            mini: true,
+                            backgroundColor: Colors.white,
+                            onPressed: _syncData,
+                            child: const Icon(Icons.my_location, color: SmartColors.smartBlue),
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -250,7 +310,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
                           ),
                           const SizedBox(width: 8),
                           const Expanded(
-                            child: _MapStatusInfo(label: 'Estado', value: 'Simulando', color: SmartColors.smartGreen),
+                            child: _MapStatusInfo(label: 'Estado', value: 'Conectado', color: SmartColors.smartGreen),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -270,7 +330,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
                     child: ElevatedButton.icon(
                       onPressed: isUpdating ? null : _syncData,
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Sincronizar', style: TextStyle(fontWeight: FontWeight.bold)),
+                      label: const Text('Centrar GPS', style: TextStyle(fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: SmartColors.smartBlue,
                         foregroundColor: Colors.white,
@@ -301,8 +361,35 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> with SingleTick
     ));
   }
 
+  Widget _buildUserMarker() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.3),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBusMarker(String busCode, Color color) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 36,

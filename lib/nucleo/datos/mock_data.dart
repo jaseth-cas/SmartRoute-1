@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 
@@ -7,26 +7,33 @@ class MockData {
     BusMock(
       id: 1,
       code: 'BUS-01',
-      plate: '123456',
-      model: 'Toyota Coaster',
-      capacity: 30,
+      plate: 'TBX-492',
+      model: 'Toyota Coaster Escolar',
+      capacity: 16,
+      seatsOccupied: 14,
       status: 'En recorrido',
       driverName: 'Juan Pérez',
-      ownerName: 'Transportes SA',
-      routeName: 'Ruta Universidad - Centro',
+      ownerName: 'Transportes Gómez (Independiente)',
+      routeName: 'Ruta Escolar Norte - Col. San José',
       simulatedGpsActive: true,
-      currentSpeedKmH: 45,
+      currentSpeedKmH: 38,
+      isVerified: true,
+      schoolName: 'Colegio San José',
     ),
     BusMock(
       id: 2,
       code: 'BUS-02',
-      plate: '654321',
+      plate: 'SKL-810',
       model: 'Nissan Civilian',
-      capacity: 28,
+      capacity: 20,
+      seatsOccupied: 18,
       status: 'Disponible',
       driverName: 'Carlos López',
-      ownerName: 'Transportes SA',
+      ownerName: 'Transportes Gómez (Independiente)',
+      routeName: 'Ruta Escolar Sur - Col. Santa María',
       simulatedGpsActive: false,
+      isVerified: true,
+      schoolName: 'Colegio Santa María',
     ),
   ];
 
@@ -87,6 +94,26 @@ class MockData {
     final prefs = await SharedPreferences.getInstance();
     final stopsJson = jsonEncode(stops.map((s) => s.toJson()).toList());
     await prefs.setString('saved_stops', stopsJson);
+  }
+
+  static Future<void> loadNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifsJson = prefs.getString('saved_notifications');
+    if (notifsJson != null) {
+      final List<dynamic> decodedList = jsonDecode(notifsJson);
+      notifications = decodedList.map((json) => NotificationMock.fromJson(json)).toList();
+    }
+  }
+
+  static Future<void> saveNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifsJson = jsonEncode(notifications.map((n) => n.toJson()).toList());
+    await prefs.setString('saved_notifications', notifsJson);
+  }
+
+  static Future<void> addNotification(NotificationMock notification) async {
+    notifications.insert(0, notification);
+    await saveNotifications();
   }
 
   static List<StopMock> stops = [
@@ -264,7 +291,7 @@ class MockData {
     ),
   ];
 
-  static final List<NotificationMock> notifications = [
+  static List<NotificationMock> notifications = [
     NotificationMock(
       id: 1,
       title: 'Retraso en la ruta',
@@ -280,6 +307,90 @@ class MockData {
       time: 'Hace 10 min',
       read: true,
       type: 'info',
+    ),
+  ];
+
+  /// Lista de estudiantes / pasajeros asignados a la flota escolar
+  static List<StudentPassengerMock> passengers = [
+    StudentPassengerMock(
+      id: 1,
+      name: 'Mateo Gómez',
+      parentName: 'Carlos Gómez',
+      parentPhone: '+57 300 123 4567',
+      schoolName: 'Colegio San José',
+      pickupAddress: 'Calle 45 # 12-30 (Casa)',
+      busCode: 'BUS-01',
+      routeCode: 'R-UB',
+      order: 1,
+      status: PassengerStatus.onboard,
+      lastBoardingTime: '07:14 AM',
+      boardingMethod: 'Biometría Facial AI',
+      monthlyFee: 65000,
+      paymentStatus: 'Al día',
+    ),
+    StudentPassengerMock(
+      id: 2,
+      name: 'Sofía Martínez',
+      parentName: 'Lucía Martínez',
+      parentPhone: '+57 311 987 6543',
+      schoolName: 'Colegio San José',
+      pickupAddress: 'Cra 15 # 80-22 (Conjunto Roble)',
+      busCode: 'BUS-01',
+      routeCode: 'R-UB',
+      order: 2,
+      status: PassengerStatus.onboard,
+      lastBoardingTime: '07:22 AM',
+      boardingMethod: 'Biometría Facial AI',
+      monthlyFee: 65000,
+      paymentStatus: 'Al día',
+    ),
+    StudentPassengerMock(
+      id: 3,
+      name: 'Lucas Rodríguez',
+      parentName: 'Andrés Rodríguez',
+      parentPhone: '+57 315 444 3322',
+      schoolName: 'Colegio San José',
+      pickupAddress: 'Av. 19 # 104-50 (Edif. Almirante)',
+      busCode: 'BUS-01',
+      routeCode: 'R-UB',
+      order: 3,
+      status: PassengerStatus.waiting,
+      lastBoardingTime: null,
+      boardingMethod: null,
+      monthlyFee: 65000,
+      paymentStatus: 'Pendiente',
+    ),
+    StudentPassengerMock(
+      id: 4,
+      name: 'Valentina Castro',
+      parentName: 'Patricia Castro',
+      parentPhone: '+57 320 555 8899',
+      schoolName: 'Colegio San José',
+      pickupAddress: 'Calle 72 # 9-15 (Torres del Parque)',
+      busCode: 'BUS-01',
+      routeCode: 'R-UB',
+      order: 4,
+      status: PassengerStatus.absent,
+      lastBoardingTime: null,
+      boardingMethod: null,
+      monthlyFee: 65000,
+      paymentStatus: 'Al día',
+    ),
+    StudentPassengerMock(
+      id: 5,
+      name: 'Santiago Morales',
+      parentName: 'Felipe Morales',
+      parentPhone: '+57 301 777 9900',
+      schoolName: 'Colegio San José',
+      pickupAddress: 'Transversal 23 # 45-10',
+      busCode: 'BUS-01',
+      routeCode: 'R-UB',
+      order: 5,
+      status: PassengerStatus.waiting,
+      lastBoardingTime: null,
+      boardingMethod: null,
+      monthlyFee: 65000,
+      paymentStatus: 'Al día',
     ),
   ];
 
@@ -301,5 +412,82 @@ class MockData {
 
   static StopMock? getDefaultStudentStop() {
     return stops.isNotEmpty ? stops.first : null;
+  }
+
+  /// Retorna el estudiante principal asociado a la vista de padre/estudiante de la demo
+  static StudentPassengerMock getPrimaryStudent() {
+    return passengers.first;
+  }
+
+  /// Obtiene los pasajeros asignados a una unidad
+  static List<StudentPassengerMock> getPassengersByBus(String busCode) {
+    return passengers.where((p) => p.busCode == busCode).toList();
+  }
+
+  /// Registra o anula el reporte de ausencia de un estudiante (Ahorro de ruta)
+  static void reportAbsence(int studentId, bool isAbsent) {
+    final index = passengers.indexWhere((p) => p.id == studentId);
+    if (index != -1) {
+      final current = passengers[index];
+      passengers[index] = current.copyWith(
+        status: isAbsent ? PassengerStatus.absent : PassengerStatus.waiting,
+      );
+    }
+  }
+
+  /// Registra el abordaje del estudiante mediante biometría facial o manual
+  static void checkInPassenger(int studentId, {String method = 'Biometría Facial AI'}) {
+    final index = passengers.indexWhere((p) => p.id == studentId);
+    if (index != -1) {
+      final now = DateTime.now();
+      final formattedTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}';
+      passengers[index] = passengers[index].copyWith(
+        status: PassengerStatus.onboard,
+        lastBoardingTime: formattedTime,
+        boardingMethod: method,
+      );
+    }
+  }
+
+  /// Marca la entrega del estudiante en el colegio o destino
+  static void checkOutPassenger(int studentId) {
+    final index = passengers.indexWhere((p) => p.id == studentId);
+    if (index != -1) {
+      passengers[index] = passengers[index].copyWith(
+        status: PassengerStatus.delivered,
+      );
+    }
+  }
+
+  /// Resumen financiero y de cupos de la flota para el transportista independiente
+  static FleetFinancialSummary getFleetFinancialSummary() {
+    int totalSeats = 0;
+    int occupiedSeats = 0;
+    for (final bus in buses) {
+      totalSeats += bus.capacity;
+      occupiedSeats += bus.seatsOccupied;
+    }
+
+    double totalRevenue = 0;
+    double pendingRevenue = 0;
+    int pendingCount = 0;
+
+    for (final p in passengers) {
+      if (p.paymentStatus == 'Al día') {
+        totalRevenue += p.monthlyFee;
+      } else {
+        pendingRevenue += p.monthlyFee;
+        pendingCount++;
+      }
+    }
+
+    return FleetFinancialSummary(
+      totalSeats: totalSeats,
+      occupiedSeats: occupiedSeats,
+      totalRevenue: totalRevenue,
+      pendingRevenue: pendingRevenue,
+      pendingPaymentsCount: pendingCount,
+      totalStudents: passengers.length,
+    );
   }
 }

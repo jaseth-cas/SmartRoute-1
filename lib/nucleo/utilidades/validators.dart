@@ -1,4 +1,4 @@
-class Validators {
+﻿class Validators {
   /// Valida que el correo no esté vacío y tenga un formato válido.
   static String? validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) {

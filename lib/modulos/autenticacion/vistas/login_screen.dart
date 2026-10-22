@@ -258,9 +258,6 @@ class RoleItem extends StatelessWidget {
       case UserRole.student:
         icon = Icons.person;
         break;
-      case UserRole.admin:
-        icon = Icons.security;
-        break;
       case UserRole.driver:
         icon = Icons.directions_car;
         break;

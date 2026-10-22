@@ -22,12 +22,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   UserRole _selectedRole = UserRole.student;
 
   void _register() {
-    if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState!.validate() && _password.isNotEmpty) {
       _formKey.currentState!.save();
-      // Simular registro y redirigir
+      // Simular registro con los datos ingresados
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Registro exitoso. Por favor inicia sesión.'),
+        SnackBar(
+          content: Text('Cuenta de ${_selectedRole.displayName} creada para ${_name.isNotEmpty ? _name : _email}. Inicia sesión.'),
           backgroundColor: SmartColors.smartGreen,
         ),
       );
@@ -179,7 +179,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   IconData _getRoleIcon(UserRole role) {
     switch (role) {
       case UserRole.student: return Icons.person;
-      case UserRole.admin: return Icons.security;
       case UserRole.driver: return Icons.directions_car;
       case UserRole.owner: return Icons.directions_bus;
     }

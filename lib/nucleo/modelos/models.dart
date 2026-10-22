@@ -8,14 +8,15 @@ enum RouteDirection {
   const RouteDirection(this.displayName);
 }
 
-/// Modelo de datos que representa a un Autobús (Unidad de transporte).
-/// Contiene información del vehículo, su conductor, su dueño y su estado actual en el mapa simulado.
+/// Modelo de datos que representa a un Autobús (Unidad de transporte escolar / privado).
+/// Contiene información del vehículo, su conductor, su dueño, capacidad de cupos y estado actual.
 class BusMock {
   final int id;
   final String code;
   final String plate;
   final String model;
   final int capacity;
+  final int seatsOccupied;
   final String status; // "En recorrido", "Disponible", "Detenido", "Finalizado"
   final String driverName;
   final String ownerName;
@@ -23,6 +24,8 @@ class BusMock {
   final bool simulatedGpsActive;
   final int currentSpeedKmH;
   final String lastUpdate;
+  final bool isVerified;
+  final String? schoolName;
 
   BusMock({
     required this.id,
@@ -30,6 +33,7 @@ class BusMock {
     required this.plate,
     required this.model,
     required this.capacity,
+    this.seatsOccupied = 0,
     required this.status,
     required this.driverName,
     required this.ownerName,
@@ -37,6 +41,8 @@ class BusMock {
     required this.simulatedGpsActive,
     this.currentSpeedKmH = 0,
     this.lastUpdate = 'Hace 1 minuto',
+    this.isVerified = true,
+    this.schoolName,
   });
 }
 
@@ -233,13 +239,34 @@ class NotificationMock {
     required this.read,
     required this.type,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'message': message,
+      'time': time,
+      'read': read,
+      'type': type,
+    };
+  }
+
+  factory NotificationMock.fromJson(Map<String, dynamic> json) {
+    return NotificationMock(
+      id: json['id'],
+      title: json['title'],
+      message: json['message'],
+      time: json['time'],
+      read: json['read'] ?? false,
+      type: json['type'],
+    );
+  }
 }
 
 enum UserRole {
-  student('Estudiante'),
-  admin('Administrador'),
-  driver('Conductor'),
-  owner('Transportista');
+  student('Padre / Familia'),
+  driver('Conductor Escolar'),
+  owner('Transportista / Flota');
 
   final String displayName;
   const UserRole(this.displayName);
@@ -271,5 +298,110 @@ class StudentPreferenceMock {
     required this.favoriteRouteIds,
     required this.favoriteStopIds,
   });
+}
+
+/// Estado de abordaje y asistencia del estudiante en la ruta escolar
+enum PassengerStatus {
+  waiting('En espera de recogida'),
+  onboard('A bordo del bus'),
+  delivered('En colegio / destino'),
+  absent('Ausente hoy');
+
+  final String displayName;
+  const PassengerStatus(this.displayName);
+}
+
+/// Representa a un estudiante / pasajero asignado a un cupo en un bus privado
+class StudentPassengerMock {
+  final int id;
+  final String name;
+  final String parentName;
+  final String parentPhone;
+  final String schoolName;
+  final String pickupAddress;
+  final String busCode;
+  final String routeCode;
+  final int order;
+  final PassengerStatus status;
+  final String? lastBoardingTime;
+  final String? boardingMethod; // "Biometría Facial AI", "Manual"
+  final double monthlyFee;
+  final String paymentStatus; // "Al día", "Pendiente", "En mora"
+  final String? photoAsset;
+
+  StudentPassengerMock({
+    required this.id,
+    required this.name,
+    required this.parentName,
+    required this.parentPhone,
+    required this.schoolName,
+    required this.pickupAddress,
+    required this.busCode,
+    required this.routeCode,
+    required this.order,
+    required this.status,
+    this.lastBoardingTime,
+    this.boardingMethod,
+    this.monthlyFee = 65000,
+    this.paymentStatus = 'Al día',
+    this.photoAsset,
+  });
+
+  StudentPassengerMock copyWith({
+    int? id,
+    String? name,
+    String? parentName,
+    String? parentPhone,
+    String? schoolName,
+    String? pickupAddress,
+    String? busCode,
+    String? routeCode,
+    int? order,
+    PassengerStatus? status,
+    String? lastBoardingTime,
+    String? boardingMethod,
+    double? monthlyFee,
+    String? paymentStatus,
+    String? photoAsset,
+  }) {
+    return StudentPassengerMock(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      parentName: parentName ?? this.parentName,
+      parentPhone: parentPhone ?? this.parentPhone,
+      schoolName: schoolName ?? this.schoolName,
+      pickupAddress: pickupAddress ?? this.pickupAddress,
+      busCode: busCode ?? this.busCode,
+      routeCode: routeCode ?? this.routeCode,
+      order: order ?? this.order,
+      status: status ?? this.status,
+      lastBoardingTime: lastBoardingTime ?? this.lastBoardingTime,
+      boardingMethod: boardingMethod ?? this.boardingMethod,
+      monthlyFee: monthlyFee ?? this.monthlyFee,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      photoAsset: photoAsset ?? this.photoAsset,
+    );
+  }
+}
+
+/// Resumen de ocupación y finanzas para el dueño de flota (SaaS / Transportista)
+class FleetFinancialSummary {
+  final int totalSeats;
+  final int occupiedSeats;
+  final double totalRevenue;
+  final double pendingRevenue;
+  final int pendingPaymentsCount;
+  final int totalStudents;
+
+  const FleetFinancialSummary({
+    required this.totalSeats,
+    required this.occupiedSeats,
+    required this.totalRevenue,
+    required this.pendingRevenue,
+    required this.pendingPaymentsCount,
+    required this.totalStudents,
+  });
+
+  double get occupancyRate => totalSeats > 0 ? (occupiedSeats / totalSeats) * 100 : 0.0;
 }
 

@@ -1,136 +1,221 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/facial_boarding_dialog.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 
-class DriverDemandScreen extends StatelessWidget {
+/// Pantalla de Manifiesto de Pasajeros y Control de Abordaje Escolar (Driver).
+/// Reemplaza el mapa de demanda universitario tradicional por la gestión operativa de
+/// recogida de estudiantes, ausencias reportadas por padres y biometría facial.
+class DriverDemandScreen extends StatefulWidget {
   const DriverDemandScreen({super.key});
 
   @override
+  State<DriverDemandScreen> createState() => _DriverDemandScreenState();
+}
+
+class _DriverDemandScreenState extends State<DriverDemandScreen> {
+  String _selectedFilter = 'Todos';
+
+  void _refreshList() {
+    setState(() {});
+  }
+
+  void _openFacialScanner([StudentPassengerMock? student]) {
+    FacialBoardingDialog.show(
+      context,
+      targetStudent: student,
+      onBoardingCompleted: _refreshList,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final stops = MockData.getStopsByRouteCode('R-UB'); // Simulando ruta actual
+    final bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
+    final allPassengers = MockData.getPassengersByBus('BUS-01');
+
+    final waitingCount = allPassengers.where((p) => p.status == PassengerStatus.waiting).length;
+    final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
+
+    final filteredPassengers = allPassengers.where((p) {
+      if (_selectedFilter == 'A bordo') return p.status == PassengerStatus.onboard;
+      if (_selectedFilter == 'En espera') return p.status == PassengerStatus.waiting;
+      if (_selectedFilter == 'Ausentes') return p.status == PassengerStatus.absent;
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
+      bottomNavigationBar: DriverBottomBar(
+        currentRoute: '/driver_demand',
+        onNavigate: (route) => context.go(route),
+      ),
       appBar: AppBar(
-        title: const Text('Mapa de Demanda', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Manifiesto de Pasajeros',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: SmartColors.smartBlue),
+        ),
         backgroundColor: Colors.white,
         elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/driver_home');
-            }
-          },
-        ),
+        actions: [
+          IconButton(
+            tooltip: 'Terminal Facial AI',
+            icon: const Icon(Icons.face_retouching_natural, color: SmartColors.smartBlue),
+            onPressed: () => _openFacialScanner(),
+          ),
+        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Banner de Ruta y Capacidad del Bus
           Container(
-            width: double.infinity,
-            height: 200,
-            color: const Color(0xFFE2E8F0),
-            child: Stack(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Image.asset(
-                  'assets/images/img.png',
-                  width: double.infinity,
-                  height: double.infinity,
-                  fit: BoxFit.fill,
-                  errorBuilder: (context, error, stackTrace) => const Center(
-                    child: Text('Mapa simulado (Imagen no encontrada)', style: TextStyle(color: SmartColors.smartGray)),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        bus.routeName ?? 'Ruta Escolar Norte',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: SmartColors.smartText),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: SmartColors.smartLightBlue,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${bus.seatsOccupied}/${bus.capacity} Cupos',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: SmartColors.smartBlue),
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  color: Colors.black.withValues(alpha: 0.5),
-                ),
-                // LayoutBuilder para posicionar los heatmaps
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final maxWidth = constraints.maxWidth;
-                    final maxHeight = constraints.maxHeight;
-
-                    return Stack(
-                      children: [
-                        _HeatmapSpot(maxWidth: maxWidth, maxHeight: maxHeight, percentX: 0.89, percentY: 0.96, color: SmartColors.smartRed, size: 60),
-                        _HeatmapSpot(maxWidth: maxWidth, maxHeight: maxHeight, percentX: 0.73, percentY: 0.42, color: SmartColors.smartYellow, size: 45),
-                        _HeatmapSpot(maxWidth: maxWidth, maxHeight: maxHeight, percentX: 0.65, percentY: 0.31, color: SmartColors.smartRed, size: 50),
-                        _HeatmapSpot(maxWidth: maxWidth, maxHeight: maxHeight, percentX: 0.28, percentY: 0.23, color: SmartColors.smartGreen, size: 30),
-                        _HeatmapSpot(maxWidth: maxWidth, maxHeight: maxHeight, percentX: 0.04, percentY: 0.93, color: SmartColors.smartRed, size: 55),
-                      ],
-                    );
-                  },
+                const SizedBox(height: 10),
+                // Resumen rápido de contadores
+                Row(
+                  children: [
+                    _MiniCounter(
+                      label: 'A bordo',
+                      count: onboardCount,
+                      color: SmartColors.smartGreen,
+                      bgColor: SmartColors.smartLightGreen,
+                    ),
+                    const SizedBox(width: 8),
+                    _MiniCounter(
+                      label: 'En espera',
+                      count: waitingCount,
+                      color: SmartColors.smartBlue,
+                      bgColor: SmartColors.smartLightBlue,
+                    ),
+                    const SizedBox(width: 8),
+                    _MiniCounter(
+                      label: 'Ausentes',
+                      count: absentCount,
+                      color: SmartColors.smartRed,
+                      bgColor: SmartColors.smartLightRed,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'Paradas con mayor demanda actual:',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+
+          // Aviso de Ausencia Reportada (Ahorro de Ruta)
+          if (absentCount > 0)
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7), // Ámbar suave
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.directions_run, color: Color(0xFFD97706), size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Valentina Castro reportó inasistencia. La parada #4 ha sido omitida para ahorrar combustible.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Botón de Terminal Facial
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SmartColors.smartBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => _openFacialScanner(),
+              icon: const Icon(Icons.camera_alt),
+              label: const Text('Abrir Terminal de Abordaje Facial AI', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
+
+          // Filtros
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['Todos', 'En espera', 'A bordo', 'Ausentes'].map((filter) {
+                  final isSelected = _selectedFilter == filter;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ChoiceChip(
+                      label: Text(filter, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                      selected: isSelected,
+                      selectedColor: SmartColors.smartLightBlue,
+                      labelStyle: TextStyle(color: isSelected ? SmartColors.smartBlue : SmartColors.smartGray),
+                      onSelected: (val) {
+                        setState(() {
+                          _selectedFilter = filter;
+                        });
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+
+          // Lista de Estudiantes en orden de recogida
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              itemCount: stops.take(5).length,
+              padding: const EdgeInsets.all(16.0),
+              itemCount: filteredPassengers.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                final stop = stops[index];
-                final demandCount = (20 - stop.order) * 2;
-                
-                Color demandColor;
-                Color demandBgColor;
-                
-                if (demandCount > 25) {
-                  demandColor = SmartColors.smartRed;
-                  demandBgColor = SmartColors.smartLightRed;
-                } else if (demandCount > 15) {
-                  demandColor = SmartColors.smartYellow;
-                  demandBgColor = SmartColors.smartLightYellow;
-                } else {
-                  demandColor = SmartColors.smartGreen;
-                  demandBgColor = SmartColors.smartLightGreen;
-                }
-
-                return SmartRouteCard(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: demandBgColor,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.people, color: demandColor),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(stop.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            Text('A ${stop.order * 2} min', style: const TextStyle(fontSize: 12, color: SmartColors.smartGray)),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('$demandCount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: demandColor)),
-                          const Text('personas', style: TextStyle(fontSize: 10, color: SmartColors.smartGray)),
-                        ],
-                      ),
-                    ],
-                  ),
+                final student = filteredPassengers[index];
+                return _StudentManifestCard(
+                  student: student,
+                  onScanFacial: () => _openFacialScanner(student),
+                  onCheckOut: () {
+                    MockData.checkOutPassenger(student.id);
+                    _refreshList();
+                  },
                 );
               },
             ),
@@ -141,38 +226,196 @@ class DriverDemandScreen extends StatelessWidget {
   }
 }
 
-class _HeatmapSpot extends StatelessWidget {
-  final double maxWidth;
-  final double maxHeight;
-  final double percentX;
-  final double percentY;
+class _MiniCounter extends StatelessWidget {
+  final String label;
+  final int count;
   final Color color;
-  final double size;
+  final Color bgColor;
 
-  const _HeatmapSpot({
-    required this.maxWidth,
-    required this.maxHeight,
-    required this.percentX,
-    required this.percentY,
+  const _MiniCounter({
+    required this.label,
+    required this.count,
     required this.color,
-    required this.size,
+    required this.bgColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final x = (maxWidth * percentX) - (size * 1.5);
-    final y = (maxHeight * percentY) - (size * 1.5);
-
-    return Positioned(
-      left: x,
-      top: y,
+    return Expanded(
       child: Container(
-        width: size,
-        height: size,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.6),
-          shape: BoxShape.circle,
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
         ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$count', style: TextStyle(fontWeight: FontWeight.w900, color: color, fontSize: 14)),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudentManifestCard extends StatelessWidget {
+  final StudentPassengerMock student;
+  final VoidCallback onScanFacial;
+  final VoidCallback onCheckOut;
+
+  const _StudentManifestCard({
+    required this.student,
+    required this.onScanFacial,
+    required this.onCheckOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isAbsent = student.status == PassengerStatus.absent;
+    final isOnboard = student.status == PassengerStatus.onboard;
+    final isDelivered = student.status == PassengerStatus.delivered;
+
+    Color badgeColor;
+    Color badgeBg;
+    String badgeText;
+
+    switch (student.status) {
+      case PassengerStatus.onboard:
+        badgeColor = SmartColors.smartGreen;
+        badgeBg = SmartColors.smartLightGreen;
+        badgeText = 'A bordo • ${student.lastBoardingTime ?? ""}';
+        break;
+      case PassengerStatus.waiting:
+        badgeColor = SmartColors.smartBlue;
+        badgeBg = SmartColors.smartLightBlue;
+        badgeText = 'En espera de recogida';
+        break;
+      case PassengerStatus.absent:
+        badgeColor = SmartColors.smartRed;
+        badgeBg = SmartColors.smartLightRed;
+        badgeText = 'Ausente hoy';
+        break;
+      case PassengerStatus.delivered:
+        badgeColor = Colors.purple;
+        badgeBg = Colors.purple.shade50;
+        badgeText = 'Entregado en colegio';
+        break;
+    }
+
+    return SmartRouteCard(
+      color: isAbsent ? Colors.grey.shade100 : Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Número de parada / Orden
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: isAbsent ? Colors.grey.shade300 : SmartColors.smartLightBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '#${student.order}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isAbsent ? Colors.grey.shade600 : SmartColors.smartBlue,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Datos del alumno
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      student.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: isAbsent ? Colors.grey.shade600 : SmartColors.smartText,
+                        decoration: isAbsent ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      student.pickupAddress,
+                      style: const TextStyle(fontSize: 12, color: SmartColors.smartGray),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tutor: ${student.parentName} (${student.parentPhone})',
+                      style: const TextStyle(fontSize: 11, color: SmartColors.smartGray),
+                    ),
+                  ],
+                ),
+              ),
+              // Badge de estado
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Botones de acción según el estado
+          if (!isAbsent)
+            Row(
+              children: [
+                if (!isOnboard && !isDelivered)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: SmartColors.smartBlue,
+                        side: const BorderSide(color: SmartColors.smartBlue),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: onScanFacial,
+                      icon: const Icon(Icons.face, size: 16),
+                      label: const Text('Check-in Facial AI', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                if (isOnboard)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: SmartColors.smartGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: onCheckOut,
+                      icon: const Icon(Icons.check_circle_outline, size: 16),
+                      label: const Text('Marcar Entregado en Colegio', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                if (isDelivered)
+                  const Expanded(
+                    child: Text(
+                      '✓ Estudiante en el colegio seguro',
+                      style: TextStyle(color: Colors.purple, fontSize: 12, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }

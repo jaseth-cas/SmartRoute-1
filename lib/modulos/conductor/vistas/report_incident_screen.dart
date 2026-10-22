@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
+import '../../../nucleo/datos/mock_data.dart';
+import '../../../nucleo/modelos/models.dart';
+import '../../../nucleo/widgets/driver_bottom_bar.dart';
 
 class ReportIncidentScreen extends StatefulWidget {
   const ReportIncidentScreen({super.key});
@@ -27,17 +30,30 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     "Otro"
   ];
 
-  void _submitReport() {
+  void _submitReport() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      // Simulate sending report
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Incidente reportado al administrador'),
-          backgroundColor: SmartColors.smartYellow,
-        ),
+      
+      final newNotification = NotificationMock(
+        id: DateTime.now().millisecondsSinceEpoch,
+        title: title,
+        message: '[$incidentType] $description',
+        time: 'Justo ahora',
+        read: false,
+        type: (incidentType == 'Mecánico' || incidentType == 'Accidente') ? 'alert' : 'info',
       );
-      context.pop();
+      
+      await MockData.addNotification(newNotification);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Incidente reportado exitosamente'),
+            backgroundColor: SmartColors.smartYellow,
+          ),
+        );
+        context.pop();
+      }
     }
   }
 
@@ -45,6 +61,10 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
+      bottomNavigationBar: DriverBottomBar(
+        currentRoute: '/report_incident',
+        onNavigate: (route) => context.go(route),
+      ),
       appBar: AppBar(
         title: const Text('Reportar Incidente', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -66,7 +86,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 decoration: BoxDecoration(
                   color: SmartColors.smartLightRed,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SmartColors.smartRed.withOpacity(0.2)),
+                  border: Border.all(color: SmartColors.smartRed.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -75,7 +95,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                     Expanded(
                       child: Text(
                         'Usa este formulario para reportar retrasos o problemas. Se enviará una alerta al administrador de forma inmediata.',
-                        style: TextStyle(color: SmartColors.smartRed.withOpacity(0.8), fontSize: 13),
+                        style: TextStyle(color: SmartColors.smartRed.withValues(alpha: 0.8), fontSize: 13),
                       ),
                     ),
                   ],
@@ -86,7 +106,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
               const Text('Tipo de incidente', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: incidentType,
+                initialValue: incidentType,
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: SmartColors.smartSurface,
