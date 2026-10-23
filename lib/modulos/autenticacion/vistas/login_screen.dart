@@ -6,6 +6,7 @@ import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -18,10 +19,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final AuthService _authService = AuthService();
   String email = "";
   String password = "";
   bool passwordVisible = false;
-  UserRole selectedRole = UserRole.student;
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -122,55 +124,40 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Selecciona tu rol',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: UserRole.values.map((role) {
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                      child: RoleItem(
-                        role: role,
-                        isSelected: selectedRole == role,
-                        onClick: () {
-                          setState(() {
-                            selectedRole = role;
-                          });
-                        },
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 24),
-              // Simulated JWT Card
+              const SizedBox(height: 16),
+              // Backend Status Card
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: SmartColors.smartLightGreen,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SmartColors.smartGreen.withValues(alpha: 0.2)),
+                  border: Border.all(color: SmartColors.smartGreen.withValues(alpha: 0.25)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: SmartColors.smartGreen, size: 20),
+                    const Icon(Icons.cloud_done, color: SmartColors.smartGreen, size: 22),
                     const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Autenticación simulada mediante JWT local',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: SmartColors.smartGreen,
-                          fontWeight: FontWeight.w500,
-                        ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Supabase Local Activo (Docker)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: SmartColors.smartGreen,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Auth PostgreSQL + Realtime sincronizado por ADB',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: SmartColors.smartGray,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -178,23 +165,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
               PrimaryButton(
-                text: 'Iniciar sesión',
-                icon: Icons.lock,
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    // Extraer el nombre (lo que está antes del @)
-                    String customName = email;
-                    if (email.contains('@')) {
-                      customName = email.split('@')[0];
-                      // Poner la primera letra en mayúscula para que se vea como un nombre
-                      if (customName.isNotEmpty) {
-                        customName = customName[0].toUpperCase() + customName.substring(1);
-                      }
-                    }
-                    context.read<SessionManager>().login(selectedRole, customName: customName);
-                    widget.onLoginSuccess();
-                  }
-                },
+                text: _isLoading ? 'Iniciando sesión...' : 'Iniciar sesión',
+                icon: _isLoading ? Icons.hourglass_top : Icons.lock,
+                enabled: !_isLoading,
+                onPressed: _handleLogin,
               ),
               const SizedBox(height: 16),
               Row(
@@ -237,69 +211,104 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
 
-class RoleItem extends StatelessWidget {
-  final UserRole role;
-  final bool isSelected;
-  final VoidCallback onClick;
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+    });
 
-  const RoleItem({
-    super.key,
-    required this.role,
-    required this.isSelected,
-    required this.onClick,
-  });
+    try {
+      // 1. Iniciar sesión real en el servidor Supabase (Docker)
+      final response = await _authService.signIn(
+        email: email,
+        password: password,
+      );
 
-  @override
-  Widget build(BuildContext context) {
-    IconData icon;
-    switch (role) {
-      case UserRole.student:
-        icon = Icons.person;
-        break;
-      case UserRole.driver:
-        icon = Icons.directions_car;
-        break;
-      case UserRole.owner:
-        icon = Icons.directions_bus;
-        break;
-    }
+      final user = response.user;
+      final session = response.session;
 
-    return GestureDetector(
-      onTap: onClick,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? SmartColors.smartLightBlue : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? SmartColors.smartBlue : SmartColors.smartBorder,
-            width: 2,
+      if (!mounted) return;
+
+      if (user != null && session != null) {
+        // Consultar el perfil y rol registrado en PostgreSQL
+        final profile = await _authService.fetchUserProfile(user.id);
+        if (!mounted) return;
+
+        final String nombre = profile?['nombre'] ??
+            user.userMetadata?['nombre'] ??
+            (email.contains('@') ? email.split('@')[0] : email);
+
+        final String rolStr = profile?['rol'] ??
+            user.userMetadata?['rol'] ??
+            'student';
+
+        final UserRole matchedRole = UserRole.values.firstWhere(
+          (r) => r.name == rolStr,
+          orElse: () => UserRole.student,
+        );
+
+        context.read<SessionManager>().loginWithSupabase(
+              userId: user.id,
+              name: nombre,
+              email: user.email ?? email,
+              role: matchedRole,
+              token: session.accessToken,
+            );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sesión iniciada: $nombre (${matchedRole.displayName})'),
+            backgroundColor: SmartColors.smartGreen,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        widget.onLoginSuccess();
+        return;
+      }
+    } catch (e) {
+      debugPrint('Aviso Supabase login: $e');
+      if (!mounted) return;
+
+      final errorMsg = e.toString().replaceAll('AuthException', '').replaceAll(':', '').trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Credenciales no encontradas en Supabase: $errorMsg'),
+          backgroundColor: SmartColors.smartRed,
+          action: SnackBarAction(
+            label: 'Acceso Demo',
+            textColor: Colors.white,
+            onPressed: _loginMockDemo,
           ),
         ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? SmartColors.smartBlue : SmartColors.smartGray,
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              role.displayName,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? SmartColors.smartBlue : SmartColors.smartGray,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _loginMockDemo() {
+    String customName = email;
+    if (email.contains('@')) {
+      customName = email.split('@')[0];
+      if (customName.isNotEmpty) {
+        customName = customName[0].toUpperCase() + customName.substring(1);
+      }
+    }
+    UserRole fallbackRole = UserRole.student;
+    if (email.contains('conductor') || email.contains('driver')) {
+      fallbackRole = UserRole.driver;
+    } else if (email.contains('transportista') ||
+        email.contains('owner') ||
+        email.contains('flota')) {
+      fallbackRole = UserRole.owner;
+    }
+    context.read<SessionManager>().login(fallbackRole, customName: customName);
+    widget.onLoginSuccess();
   }
 }

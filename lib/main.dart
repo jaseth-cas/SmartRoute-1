@@ -1,12 +1,22 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/navegacion/app_router.dart';
+import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 import 'package:smartroute_flutter/nucleo/tema/theme.dart';
 
 /// Punto de entrada principal de la aplicación SmartRoute.
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa la conexión con el servidor local de Supabase (Docker)
+  try {
+    await SupabaseConfig.initialize();
+  } catch (e) {
+    debugPrint('Aviso: Inicialización de Supabase: $e');
+  }
+
   runApp(
     // MultiProvider permite inyectar manejadores de estado (Providers) 
     // en toda la aplicación de manera global.

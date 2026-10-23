@@ -5,6 +5,7 @@ import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/utilidades/validators.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -15,23 +16,79 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final AuthService _authService = AuthService();
   
   String _name = '';
   String _email = '';
+  String _phone = '';
   String _password = '';
+  String _confirmPassword = '';
   UserRole _selectedRole = UserRole.student;
+  bool _isLoading = false;
 
-  void _register() {
-    if (_formKey.currentState!.validate() && _password.isNotEmpty) {
-      _formKey.currentState!.save();
-      // Simular registro con los datos ingresados
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_password.trim().isEmpty) return;
+
+    if (_password != _confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Cuenta de ${_selectedRole.displayName} creada para ${_name.isNotEmpty ? _name : _email}. Inicia sesión.'),
-          backgroundColor: SmartColors.smartGreen,
+        const SnackBar(
+          content: Text('Las contraseñas no coinciden. Por favor verifícalas.'),
+          backgroundColor: SmartColors.smartRed,
         ),
       );
-      context.pop(); // Volver al login
+      return;
+    }
+
+    _formKey.currentState!.save();
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await _authService.signUp(
+        email: _email,
+        password: _password,
+        nombre: _name,
+        rol: _selectedRole,
+        telefono: _phone.trim().isNotEmpty ? _phone.trim() : null,
+      );
+
+      if (!mounted) return;
+
+      if (response.user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '¡Credenciales creadas para ${_selectedRole.displayName}! Ya puedes iniciar sesión.',
+            ),
+            backgroundColor: SmartColors.smartGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        context.pop(); // Volver al login para que el usuario ingrese sus nuevas credenciales
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo completar el registro. Verifica los datos e intenta de nuevo.'),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al crear credenciales en Supabase: $e'),
+          backgroundColor: SmartColors.smartRed,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -67,7 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Completa tus datos para crear una cuenta',
+                  'Crea tus credenciales de acceso para conectarte a Supabase',
                   style: TextStyle(
                     fontSize: 14,
                     color: SmartColors.smartGray,
@@ -90,26 +147,49 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 
                 CustomTextField(
                   label: 'Correo electrónico',
-                  hint: 'correo@ejemplo.com',
+                  hint: 'correo@smartroute.com',
                   prefixIcon: Icons.email,
                   keyboardType: TextInputType.emailAddress,
                   validator: Validators.validateEmail,
                   onChanged: (val) => _email = val,
                 ),
                 const SizedBox(height: 16),
+
+                CustomTextField(
+                  label: 'Teléfono / Móvil (opcional)',
+                  hint: '+57 300 123 4567',
+                  prefixIcon: Icons.phone_android,
+                  keyboardType: TextInputType.phone,
+                  onChanged: (val) => _phone = val,
+                ),
+                const SizedBox(height: 16),
                 
                 CustomTextField(
                   label: 'Contraseña',
-                  hint: '••••••••',
+                  hint: 'Mínimo 6 caracteres',
                   prefixIcon: Icons.lock,
                   isPassword: true,
                   validator: Validators.validatePassword,
                   onChanged: (val) => _password = val,
                 ),
+                const SizedBox(height: 16),
+
+                CustomTextField(
+                  label: 'Confirmar Contraseña',
+                  hint: 'Repite tu contraseña',
+                  prefixIcon: Icons.lock_outline,
+                  isPassword: true,
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Confirma tu contraseña';
+                    if (val != _password) return 'Las contraseñas no coinciden';
+                    return null;
+                  },
+                  onChanged: (val) => _confirmPassword = val,
+                ),
                 const SizedBox(height: 24),
 
                 const Text(
-                  'Selecciona tu rol',
+                  'Selecciona tu rol en la plataforma',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                 ),
                 const SizedBox(height: 12),
@@ -164,8 +244,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 32),
                 PrimaryButton(
-                  text: 'Registrarme',
-                  icon: Icons.person_add,
+                  text: _isLoading ? 'Creando credenciales...' : 'Crear Cuenta',
+                  icon: _isLoading ? Icons.hourglass_top : Icons.person_add,
+                  enabled: !_isLoading,
                   onPressed: _register,
                 ),
               ],
