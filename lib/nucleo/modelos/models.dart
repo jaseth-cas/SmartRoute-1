@@ -26,6 +26,8 @@ class BusMock {
   final String lastUpdate;
   final bool isVerified;
   final String? schoolName;
+  final double? latitude;
+  final double? longitude;
 
   BusMock({
     required this.id,
@@ -43,7 +45,48 @@ class BusMock {
     this.lastUpdate = 'Hace 1 minuto',
     this.isVerified = true,
     this.schoolName,
+    this.latitude,
+    this.longitude,
   });
+
+  factory BusMock.fromMap(Map<String, dynamic> map) {
+    return BusMock(
+      id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
+      code: map['codigo'] ?? map['code'] ?? '',
+      plate: map['placa'] ?? map['plate'] ?? '',
+      model: map['modelo'] ?? map['model'] ?? '',
+      capacity: map['capacidad'] ?? map['capacity'] ?? 16,
+      seatsOccupied: map['asientos_ocupados'] ?? map['seatsOccupied'] ?? 0,
+      status: map['estado'] ?? map['status'] ?? 'Disponible',
+      driverName: map['conductor_nombre'] ?? map['driverName'] ?? 'Conductor Asignado',
+      ownerName: map['dueno_nombre'] ?? map['ownerName'] ?? 'Transportes Escolar',
+      routeName: map['nombre_ruta'] ?? map['routeName'],
+      simulatedGpsActive: map['simulatedGpsActive'] ?? true,
+      currentSpeedKmH: map['velocidad_kmh'] ?? map['currentSpeedKmH'] ?? 0,
+      lastUpdate: 'En vivo',
+      isVerified: map['is_verified'] ?? true,
+      schoolName: map['colegio_asignado'] ?? map['schoolName'] ?? 'Colegio San José',
+      latitude: (map['latitud_actual'] ?? map['latitude'])?.toDouble(),
+      longitude: (map['longitud_actual'] ?? map['longitude'])?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'codigo': code,
+      'placa': plate,
+      'modelo': model,
+      'capacidad': capacity,
+      'asientos_ocupados': seatsOccupied,
+      'estado': status,
+      'colegio_asignado': schoolName,
+      'nombre_ruta': routeName,
+      'velocidad_kmh': currentSpeedKmH,
+      if (latitude != null) 'latitud_actual': latitude,
+      if (longitude != null) 'longitud_actual': longitude,
+      'is_verified': isVerified,
+    };
+  }
 }
 
 /// Modelo de datos para las Rutas del sistema.
@@ -381,6 +424,68 @@ class StudentPassengerMock {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       photoAsset: photoAsset ?? this.photoAsset,
     );
+  }
+
+  factory StudentPassengerMock.fromMap(
+    Map<String, dynamic> map, [
+    Map<String, dynamic>? attendanceMap,
+  ]) {
+    PassengerStatus parsedStatus = PassengerStatus.waiting;
+    String? lastBoardingTime;
+    String? boardingMethod;
+
+    final rawStatus = attendanceMap?['estado'] ?? map['status'];
+    if (rawStatus != null) {
+      switch (rawStatus) {
+        case 'onboard':
+          parsedStatus = PassengerStatus.onboard;
+          break;
+        case 'delivered':
+          parsedStatus = PassengerStatus.delivered;
+          break;
+        case 'absent':
+          parsedStatus = PassengerStatus.absent;
+          break;
+        default:
+          parsedStatus = PassengerStatus.waiting;
+      }
+    }
+    lastBoardingTime = attendanceMap?['hora_abordaje'];
+    boardingMethod = attendanceMap?['metodo_abordaje'];
+
+    return StudentPassengerMock(
+      id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
+      name: map['nombre'] ?? map['name'] ?? '',
+      parentName: map['padre_nombre'] ?? map['parentName'] ?? '',
+      parentPhone: map['padre_telefono'] ?? map['parentPhone'] ?? '',
+      schoolName: map['colegio'] ?? map['schoolName'] ?? 'Colegio San José',
+      pickupAddress: map['direccion_recogida'] ?? map['pickupAddress'] ?? '',
+      busCode: map['autobus_codigo'] ?? map['busCode'] ?? 'BUS-01',
+      routeCode: map['routeCode'] ?? 'R-01',
+      order: map['orden'] ?? map['order'] ?? 1,
+      status: parsedStatus,
+      lastBoardingTime: lastBoardingTime,
+      boardingMethod: boardingMethod,
+      monthlyFee: (map['cuota_mensual'] ?? map['monthlyFee']) != null
+          ? double.tryParse(map['cuota_mensual'].toString()) ?? 65.0
+          : 65.0,
+      paymentStatus: map['estado_pago'] ?? map['paymentStatus'] ?? 'Al día',
+      photoAsset: map['photoAsset'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'nombre': name,
+      'padre_nombre': parentName,
+      'padre_telefono': parentPhone,
+      'colegio': schoolName,
+      'direccion_recogida': pickupAddress,
+      'autobus_codigo': busCode,
+      'orden': order,
+      'cuota_mensual': monthlyFee,
+      'estado_pago': paymentStatus,
+    };
   }
 }
 

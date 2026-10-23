@@ -3,6 +3,11 @@ import 'package:provider/provider.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/navegacion/app_router.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/incident_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 import 'package:smartroute_flutter/nucleo/tema/theme.dart';
 
@@ -18,12 +23,17 @@ void main() async {
   }
 
   runApp(
-    // MultiProvider permite inyectar manejadores de estado (Providers) 
+    // MultiProvider permite inyectar manejadores de estado (Providers) y servicios
     // en toda la aplicación de manera global.
     MultiProvider(
       providers: [
         // SessionManager maneja el inicio de sesión y los datos del usuario activo.
         ChangeNotifierProvider(create: (_) => SessionManager()),
+        Provider(create: (_) => AuthService()),
+        Provider(create: (_) => BusService()),
+        Provider(create: (_) => StudentService()),
+        Provider(create: (_) => AttendanceService()),
+        Provider(create: (_) => IncidentService()),
       ],
       child: const SmartRouteApp(),
     ),
