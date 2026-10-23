@@ -1,10 +1,16 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
+/// Pantalla de Monitoreo GPS de Flota para el Transportista / Dueño de Autobuses.
+/// Muestra todas las unidades escolares activas en un mapa OpenStreetMap real con
+/// telemetría interactiva, velocidad, chofer asignado y capacidad de cupos.
 class OwnerMapScreen extends StatefulWidget {
   const OwnerMapScreen({super.key});
 
@@ -13,34 +19,50 @@ class OwnerMapScreen extends StatefulWidget {
 }
 
 class _OwnerMapScreenState extends State<OwnerMapScreen> {
-  final buses = MockData.buses;
-  
-  final List<List<double>> fullLoopPath = [
-    [0.89, 0.96], [0.85, 0.79], [0.82, 0.66], [0.80, 0.53],
-    [0.73, 0.42], [0.65, 0.31], [0.49, 0.21], [0.46, 0.15],
-    [0.38, 0.10], [0.31, 0.16], [0.28, 0.23], [0.25, 0.29],
-    [0.19, 0.49], [0.11, 0.69], [0.07, 0.81], [0.04, 0.93],
-    [0.04, 0.93], [0.16, 0.58], [0.19, 0.49], [0.23, 0.38],
-    [0.63, 0.25], [0.65, 0.31], [0.73, 0.42], [0.80, 0.53],
-    [0.82, 0.66], [0.85, 0.79], [0.89, 0.96]
+  final MapController _mapController = MapController();
+  final List<BusMock> buses = MockData.buses;
+
+  // Coordenadas simuladas para los dos autobuses principales en ruta escolar
+  final List<LatLng> _bus1Route = const [
+    LatLng(9.9322, -84.0795),
+    LatLng(9.9335, -84.0792),
+    LatLng(9.9348, -84.0789),
+    LatLng(9.9360, -84.0785),
+    LatLng(9.9358, -84.0770),
+    LatLng(9.9345, -84.0772),
+    LatLng(9.9332, -84.0775),
+    LatLng(9.9318, -84.0778),
   ];
 
-  int index1 = 0;
-  int index2 = 12; // Segundo bus empieza más adelante
-  Timer? _timer;
+  final List<LatLng> _bus2Route = const [
+    LatLng(9.9358, -84.0770),
+    LatLng(9.9345, -84.0772),
+    LatLng(9.9332, -84.0775),
+    LatLng(9.9318, -84.0778),
+    LatLng(9.9322, -84.0795),
+    LatLng(9.9335, -84.0792),
+    LatLng(9.9348, -84.0789),
+    LatLng(9.9360, -84.0785),
+  ];
+
+  int _bus1Index = 0;
+  int _bus2Index = 0;
+  Timer? _gpsTimer;
+  BusMock? _selectedBus;
 
   @override
   void initState() {
     super.initState();
-    _startAnimationLoop();
+    _selectedBus = buses.isNotEmpty ? buses.first : null;
+    _startGpsSimulation();
   }
 
-  void _startAnimationLoop() {
-    _timer = Timer.periodic(const Duration(milliseconds: 4000), (timer) {
+  void _startGpsSimulation() {
+    _gpsTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (mounted) {
         setState(() {
-          index1 = (index1 + 1) % fullLoopPath.length;
-          index2 = (index2 + 1) % fullLoopPath.length;
+          _bus1Index = (_bus1Index + 1) % _bus1Route.length;
+          _bus2Index = (_bus2Index + 1) % _bus2Route.length;
         });
       }
     });
@@ -48,16 +70,29 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _gpsTimer?.cancel();
     super.dispose();
+  }
+
+  void _centerOnBus(LatLng position, BusMock bus) {
+    setState(() {
+      _selectedBus = bus;
+    });
+    _mapController.move(position, 16.0);
   }
 
   @override
   Widget build(BuildContext context) {
+    final bus1Pos = _bus1Route[_bus1Index];
+    final bus2Pos = _bus2Route[_bus2Index];
+
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
-        title: const Text('Mapa de la Flota', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Monitoreo GPS de Flota',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: SmartColors.smartBlue),
+        ),
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
@@ -70,96 +105,249 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
             }
           },
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Centrar en flota',
+            icon: const Icon(Icons.my_location, color: SmartColors.smartBlue),
+            onPressed: () {
+              _mapController.move(const LatLng(9.9340, -84.0780), 15.0);
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.directions_bus, color: SmartColors.smartBlue),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Flota Activa', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: SmartColors.smartText)),
-                      Text('${buses.length} autobuses en línea', style: const TextStyle(fontSize: 14, color: SmartColors.smartGray)),
-                    ],
+          // Banner de estado de la flota
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            color: Colors.white,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: SmartColors.smartGreen,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${buses.length} Unidades en Operación',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: SmartColors.smartText),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: SmartColors.smartLightBlue,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                ],
-              ),
+                  child: const Text(
+                    'GPS Satelital Activo',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SmartColors.smartBlue),
+                  ),
+                ),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: AspectRatio(
-              aspectRatio: 1024 / 680,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SmartColors.smartBorder),
+
+          // Mapa interactivo OpenStreetMap
+          Expanded(
+            flex: 3,
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: const LatLng(9.9340, -84.0780),
+                initialZoom: 15.2,
+                minZoom: 12.0,
+                maxZoom: 18.0,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.smartroute.smartroute_flutter',
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Stack(
-                    children: [
-                      Image.asset(
-                        'assets/images/img.png',
-                        width: double.infinity,
-                        height: double.infinity,
-                        fit: BoxFit.fill,
-                        errorBuilder: (context, error, stackTrace) => const Center(
-                          child: Text('Mapa simulado (Imagen no encontrada)', style: TextStyle(color: SmartColors.smartGray)),
+                // Trazo de ruta escolar
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _bus1Route,
+                      color: SmartColors.smartBlue.withValues(alpha: 0.6),
+                      strokeWidth: 4.0,
+                    ),
+                  ],
+                ),
+                // Marcadores de autobuses
+                MarkerLayer(
+                  markers: [
+                    // Bus 1
+                    Marker(
+                      point: bus1Pos,
+                      width: 70,
+                      height: 70,
+                      child: GestureDetector(
+                        onTap: () => _centerOnBus(bus1Pos, buses[0]),
+                        child: _BusGpsMarker(
+                          code: buses.isNotEmpty ? buses[0].code : 'BUS-01',
+                          color: SmartColors.smartBlue,
+                          isSelected: _selectedBus?.code == buses[0].code,
                         ),
                       ),
-                      Container(
-                        color: Colors.black.withValues(alpha: 0.2),
+                    ),
+                    // Bus 2 (si existe)
+                    if (buses.length > 1)
+                      Marker(
+                        point: bus2Pos,
+                        width: 70,
+                        height: 70,
+                        child: GestureDetector(
+                          onTap: () => _centerOnBus(bus2Pos, buses[1]),
+                          child: _BusGpsMarker(
+                            code: buses[1].code,
+                            color: SmartColors.smartGreen,
+                            isSelected: _selectedBus?.code == buses[1].code,
+                          ),
+                        ),
                       ),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final maxWidth = constraints.maxWidth;
-                          final maxHeight = constraints.maxHeight;
-
-                          final point1 = fullLoopPath[index1];
-                          final left1 = (maxWidth * point1[0]) - 18;
-                          final top1 = (maxHeight * point1[1]) - 18;
-
-                          final point2 = fullLoopPath[index2];
-                          final left2 = (maxWidth * point2[0]) - 18;
-                          final top2 = (maxHeight * point2[1]) - 18;
-
-                          return Stack(
-                            children: [
-                              _BusAnimatedMarker(
-                                left: left1,
-                                top: top1,
-                                busCode: buses.isNotEmpty ? buses[0].code : 'BUS-01',
-                                color: SmartColors.smartBlue,
-                              ),
-                              _BusAnimatedMarker(
-                                left: left2,
-                                top: top2,
-                                busCode: buses.length > 1 ? buses[1].code : 'BUS-02',
-                                color: SmartColors.smartGreen,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-              ),
+              ],
+            ),
+          ),
+
+          // Tarjeta interactiva del autobús seleccionado
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: SmartColors.smartLightBlue,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.directions_bus, color: SmartColors.smartBlue, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedBus?.code ?? 'BUS-01',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Text(
+                              _selectedBus?.model ?? 'Toyota Coaster Escolar',
+                              style: const TextStyle(fontSize: 12, color: SmartColors.smartGray),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _selectedBus?.status == 'En recorrido'
+                            ? SmartColors.smartLightGreen
+                            : SmartColors.smartLightBlue,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _selectedBus?.status ?? 'En servicio',
+                        style: TextStyle(
+                          color: _selectedBus?.status == 'En recorrido'
+                              ? SmartColors.smartGreen
+                              : SmartColors.smartBlue,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _TelemetryItem(
+                      icon: Icons.person,
+                      label: 'Chofer',
+                      value: _selectedBus?.driverName ?? 'Juan Pérez',
+                    ),
+                    _TelemetryItem(
+                      icon: Icons.event_seat,
+                      label: 'Cupos',
+                      value: '${_selectedBus?.seatsOccupied ?? 14}/${_selectedBus?.capacity ?? 16}',
+                    ),
+                    _TelemetryItem(
+                      icon: Icons.speed,
+                      label: 'Velocidad',
+                      value: '${_selectedBus?.currentSpeedKmH ?? 38} km/h',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (int i = 0; i < buses.length; i++) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: _selectedBus?.code == buses[i].code
+                                  ? SmartColors.smartBlue
+                                  : SmartColors.smartBorder,
+                              width: _selectedBus?.code == buses[i].code ? 2 : 1,
+                            ),
+                            backgroundColor: _selectedBus?.code == buses[i].code
+                                ? SmartColors.smartLightBlue.withValues(alpha: 0.3)
+                                : Colors.white,
+                          ),
+                          onPressed: () {
+                            final targetPos = i == 0 ? bus1Pos : bus2Pos;
+                            _centerOnBus(targetPos, buses[i]);
+                          },
+                          child: Text(
+                            'Ver ${buses[i].code}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedBus?.code == buses[i].code
+                                  ? SmartColors.smartBlue
+                                  : SmartColors.smartGray,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (i < buses.length - 1) const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -168,57 +356,98 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
   }
 }
 
-class _BusAnimatedMarker extends StatelessWidget {
-  final double left;
-  final double top;
-  final String busCode;
+class _BusGpsMarker extends StatelessWidget {
+  final String code;
   final Color color;
+  final bool isSelected;
 
-  const _BusAnimatedMarker({
-    required this.left,
-    required this.top,
-    required this.busCode,
+  const _BusGpsMarker({
+    required this.code,
     required this.color,
+    required this.isSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedPositioned(
-      duration: const Duration(milliseconds: 3000),
-      curve: Curves.linear,
-      left: left,
-      top: top,
-      child: Column(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: isSelected ? SmartColors.smartText : color,
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            code,
+            style: const TextStyle(
               color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 2),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2)),
-              ],
-            ),
-            child: Icon(Icons.directions_bus, color: color, size: 20),
-          ),
-          Transform.translate(
-            offset: const Offset(0, -4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                busCode,
-                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              fontWeight: FontWeight.bold,
+              fontSize: 10,
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isSelected ? SmartColors.smartBlue : color,
+              width: isSelected ? 3 : 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (isSelected ? SmartColors.smartBlue : Colors.black).withValues(alpha: 0.3),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(Icons.directions_bus, color: color, size: 22),
+        ),
+      ],
+    );
+  }
+}
+
+class _TelemetryItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _TelemetryItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: SmartColors.smartGray),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: SmartColors.smartText),
+        ),
+      ],
     );
   }
 }

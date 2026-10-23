@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -28,7 +28,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // Simulate loading data from session
     final session = context.read<SessionManager>().currentSession;
     _name = session?.name ?? 'Usuario';
-    _email = session?.email ?? 'correo@universidad.edu';
+    _email = session?.email ?? 'padre.familia@smartroute.com';
     _phone = '555-0192'; // Mock phone
   }
 
@@ -107,7 +107,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               
               CustomTextField(
                 label: 'Correo electrónico',
-                hint: 'estudiante@universidad.edu',
+                hint: 'padre.familia@smartroute.com',
                 prefixIcon: Icons.email,
                 keyboardType: TextInputType.emailAddress,
                 controller: TextEditingController(text: _email),

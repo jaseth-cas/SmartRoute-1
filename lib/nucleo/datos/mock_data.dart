@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 
@@ -41,27 +41,27 @@ class MockData {
     RouteMock(
       id: 1,
       code: 'R-UB',
-      name: 'Ruta Universidad - Boulevard',
-      origin: 'Universidad',
-      destination: 'Boulevard',
+      name: 'Ruta Escolar Norte - Col. San José',
+      origin: 'Residencial San Carlos',
+      destination: 'Colegio San José',
       status: 'Activa',
       etaMinutes: 5,
       busCode: 'BUS-01',
-      direction: RouteDirection.universityToBoulevard,
-      description: 'Ruta principal que conecta la universidad con el centro',
+      direction: RouteDirection.homeToSchool,
+      description: 'Ruta principal de recogida matutina hacia el Colegio San José',
       isFavorite: true,
     ),
     RouteMock(
       id: 2,
       code: 'R-BU',
-      name: 'Ruta Boulevard - Universidad',
-      origin: 'Boulevard',
-      destination: 'Universidad',
+      name: 'Ruta Retorno Tarde - Col. San José',
+      origin: 'Colegio San José',
+      destination: 'Residencial San Carlos',
       status: 'Activa',
       etaMinutes: 12,
       busCode: 'BUS-02',
-      direction: RouteDirection.boulevardToUniversity,
-      description: 'Ruta de regreso hacia la universidad',
+      direction: RouteDirection.schoolToHome,
+      description: 'Ruta escolar de retorno de la tarde hacia los domicilios',
       isFavorite: false,
     ),
   ];
@@ -117,12 +117,12 @@ class MockData {
   }
 
   static List<StopMock> stops = [
-    // Paradas para R-UB (Universidad -> Boulevard)
+    // Paradas para R-UB (Residencial -> Colegio San José)
     StopMock(
       id: 11,
       routeCode: 'R-UB',
       stopCode: 'P-UB-001',
-      name: 'Universidad',
+      name: 'Colegio San José',
       reference: 'Punto de salida',
       order: 1,
       distanceFromStartKm: 0.0,
@@ -194,7 +194,7 @@ class MockData {
       id: 17,
       routeCode: 'R-UB',
       stopCode: 'P-UB-007',
-      name: 'Boulevard',
+      name: 'Residencial San Carlos',
       reference: 'Punto de llegada',
       order: 7,
       distanceFromStartKm: 5.5,
@@ -203,12 +203,12 @@ class MockData {
       isFavorite: false,
     ),
     
-    // Paradas para R-BU (Boulevard -> Universidad)
+    // Paradas para R-BU (Colegio -> Residencial)
     StopMock(
       id: 1,
       routeCode: 'R-BU',
       stopCode: 'P-BU-001',
-      name: 'Boulevard',
+      name: 'Residencial San Carlos',
       reference: 'Punto de salida',
       order: 1,
       distanceFromStartKm: 0.0,
@@ -276,12 +276,12 @@ class MockData {
       longitude: -80.359,
       isFavorite: false,
     ),
-    // Agregamos también la parada final de la Universidad
+    // Agregamos también la parada final del Colegio
     StopMock(
       id: 7,
       routeCode: 'R-BU',
       stopCode: 'P-BU-007',
-      name: 'Universidad',
+      name: 'Colegio San José',
       reference: 'Punto de llegada',
       order: 7,
       distanceFromStartKm: 5.5,
@@ -303,7 +303,7 @@ class MockData {
     NotificationMock(
       id: 2,
       title: 'Bus acercándose',
-      message: 'Tu bus a la universidad está a 5 minutos de tu parada.',
+      message: 'Tu bus escolar está a 5 minutos de tu domicilio.',
       time: 'Hace 10 min',
       read: true,
       type: 'info',

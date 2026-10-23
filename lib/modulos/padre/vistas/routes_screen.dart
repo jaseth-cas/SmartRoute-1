@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
@@ -33,7 +33,7 @@ class _RoutesScreenState extends State<RoutesScreen> {
 
     return PopScope(
       canPop: context.canPop(),
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           context.go('/student_home');
         }

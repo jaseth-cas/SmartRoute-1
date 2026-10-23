@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
@@ -57,18 +57,18 @@ class StudentProfileScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(session?.name ?? 'Usuario', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
-            Text(session?.email ?? 'correo@universidad.edu', style: const TextStyle(fontSize: 14, color: SmartColors.smartGray)),
+            Text(session?.email ?? 'padre.familia@smartroute.com', style: const TextStyle(fontSize: 14, color: SmartColors.smartGray)),
             const SizedBox(height: 24),
             SmartRouteCard(
               child: Column(
                 children: [
-                  _ProfileInfoItem(icon: Icons.badge, label: 'Rol', value: session?.role.displayName ?? 'Estudiante'),
+                  _ProfileInfoItem(icon: Icons.badge, label: 'Rol', value: session?.role.displayName ?? 'Padre / Familia'),
                   const Divider(color: SmartColors.smartBorder, height: 16),
                   const _ProfileInfoItem(icon: Icons.notifications, label: 'Notificaciones', value: 'Activas'),
                   const Divider(color: SmartColors.smartBorder, height: 16),
-                  const _ProfileInfoItem(icon: Icons.map, label: 'Ruta favorita', value: 'Ruta Universidad → Boulevard'),
+                  const _ProfileInfoItem(icon: Icons.map, label: 'Ruta escolar', value: 'Ruta Escolar Norte - Col. San José'),
                   const Divider(color: SmartColors.smartBorder, height: 16),
-                  const _ProfileInfoItem(icon: Icons.place, label: 'Parada favorita', value: 'Universidad'),
+                  const _ProfileInfoItem(icon: Icons.place, label: 'Destino escolar', value: 'Colegio San José'),
                 ],
               ),
             ),

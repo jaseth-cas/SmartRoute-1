@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
@@ -128,12 +128,12 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     final bus = MockData.getBusByCode(route?.busCode ?? "BUS-01");
 
     final isUToB = currentPointIndex <= 3;
-    final currentDisplayRoute = isUToB ? "Universidad → Boulevard" : "Boulevard → Universidad";
-    final currentVia = isUToB ? "VÍA ALTA" : "VÍA BAJA";
+    final currentDisplayRoute = isUToB ? "Ruta Domicilio → Colegio San José" : "Colegio San José → Domicilio";
+    final currentVia = isUToB ? "IDA MATUTINA" : "RETORNO TARDE";
 
     return PopScope(
       canPop: context.canPop(),
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           context.go('/student_home');
         }

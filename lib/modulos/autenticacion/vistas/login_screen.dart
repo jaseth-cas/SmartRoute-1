@@ -82,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onChanged: (value) => email = value,
                     validator: Validators.validateEmail,
                     decoration: InputDecoration(
-                      hintText: 'correo@universidad.edu',
+                      hintText: 'correo@smartroute.com',
                       prefixIcon: const Icon(Icons.person_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),

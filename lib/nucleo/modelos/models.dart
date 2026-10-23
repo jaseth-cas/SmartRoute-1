@@ -1,8 +1,8 @@
-/// Define la dirección de una ruta, útil para mostrar en la interfaz si el bus va 
-/// hacia la Universidad o regresa hacia el Boulevard.
+/// Define la dirección de una ruta, útil para mostrar en la interfaz si el bus escolar va 
+/// hacia el Colegio o regresa hacia los domicilios.
 enum RouteDirection {
-  boulevardToUniversity('Boulevard → Universidad'),
-  universityToBoulevard('Universidad → Boulevard');
+  homeToSchool('Domicilio → Colegio'),
+  schoolToHome('Colegio → Domicilio');
 
   final String displayName;
   const RouteDirection(this.displayName);
@@ -131,7 +131,7 @@ class RouteMock {
       busCode: json['busCode'],
       direction: RouteDirection.values.firstWhere(
         (e) => e.name == json['direction'],
-        orElse: () => RouteDirection.boulevardToUniversity,
+        orElse: () => RouteDirection.homeToSchool,
       ),
       description: json['description'],
       isFavorite: json['isFavorite'] ?? false,
