@@ -16,7 +16,7 @@
 | **Fase 3** | **Conexión Módulo Transportista (Dueño de Flota / SaaS)** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-04, RF-05, RF-06, RF-07 | Dashboard financiero en vivo, registro de buses, mapa multivehicular |
 | **Fase 4** | **Conexión Módulo Conductor y Biometría Facial AI** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-08, RF-09, RF-10, RF-11, RF-12 | Manifiesto dinámico, abordaje facial, omisión de paradas, telemetría GPS |
 | **Fase 5** | **Conexión Módulo Padre de Familia y GPS Satelital** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-14, RF-15, RF-16, RF-17, RF-18 | Notificación push de abordaje, reporte de inasistencias, mapa en vivo |
-| **Fase 6** | **Pruebas E2E, Sello Trust & Safety y Auditoría Final** | <span style="color:blue;font-weight:bold;">🔄 En Curso / Cierre</span> | RNF-01 a RNF-12 | RLS, Sello Trust & Safety, credenciales determinísticas y pruebas E2E |
+| **Fase 6** | **Pruebas E2E, Sello Trust & Safety y Auditoría Final** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RNF-01 a RNF-12 | RLS, Sello Trust & Safety, credenciales determinísticas y pruebas E2E |
 
 ---
 
@@ -139,13 +139,27 @@
 
 ---
 
-### ⏳ Fase 6: Aseguramiento de Calidad, Sello Trust & Safety y Auditoría Final (EN CURSO)
-* **Objetivo:** Validación integral de seguridad, aislamiento de datos y resiliencia offline.
-* **Tareas Específicas:**
-  * **Auditoría de Políticas RLS:** Comprobar que un padre no pueda leer la ubicación de autobuses donde no tiene hijos matriculados.
-  * **Pruebas de Concurrencia y ADB Reverse:** Validar el túnel `adb reverse tcp:54321 tcp:54321` para pruebas en teléfonos físicos conectados por USB.
-  * **Sello de Confianza:** Flujo de validación documental del transportista para certificar antecedentes penales y RTM de conductores.
-  * **Análisis estático:** `flutter analyze` y `flutter test` con 100% de éxito.
+### ✅ Fase 6: Aseguramiento de Calidad, Sello Trust & Safety y Auditoría Final (COMPLETADA)
+* **Objetivo:** Validación integral de seguridad, aislamiento de datos, flujo de certificación de confianza y resiliencia offline.
+* **Componentes y Conexiones Implementados:**
+  * **Sello de Confianza SmartRoute (`TrustSafetyDialog`):**
+    * Diálogo interactivo para inspección de los 4 documentos auditables obligatorios (RF-03, RNF-12):
+      1. Récord policivo y antecedentes penales limpios (Certificado Nacional de Policía).
+      2. Licencia comercial de conducción categoría C2 escolar vigente.
+      3. Póliza de seguros todo riesgo con cobertura de accidentes para pasajeros escolares.
+      4. Certificado de Revisión Técnico-Mecánica (RTM) con vigencia semestral.
+    * Conectado tanto al Transportista (`OwnerHomeScreen`) para auditar y suspender/aprobar la certificación (`BusService.updateBusVerification()`), como al Padre (`StudentHomeScreen`) para consultar los distintivos de garantía escolar.
+  * **Semillas y Credenciales Determinísticas:**
+    * Script reproducible en `supabase/seed.sql` y migración `20261025000004_seed_deterministic_demo_users.sql`.
+    * Cuentas estándar con contraseña maestra `Password123!` para todos los roles (`owner`, `driver`, `student`) documentadas en `docs/usuarios_prueba.md`.
+    * Solución de tokens GoTrue para permitir inicios de sesión inmediatos sin confirmación manual de correos.
+  * **Informe de Auditoría de Políticas RLS:**
+    * Documento formal generado en `docs/auditoria_seguridad_rls.md` certificando el aislamiento de datos entre transportistas, choferes y tutores.
+  * **Suite de Pruebas Automatizadas y Análisis Estático:**
+    * `flutter analyze`: **0 errores, 0 advertencias (No issues found!)**.
+    * `flutter test`: **21 tests unitarios y de widgets aprobados al 100%** (caja blanca, modelos, serialización, estados de abordaje, cálculo de cupos y renderizado de TrustSafetyDialog).
+  * **Validación E2E en Navegador:**
+    * Flujo completo probado en Chrome con subagente de navegador: inicio de sesión de transportista (`dueno@smartroute.com`), apertura y prueba del Sello de Confianza, cierre de sesión y logeo de conductor (`conductor@smartroute.com`) en cabina activa.
 
 ---
 

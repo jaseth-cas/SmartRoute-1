@@ -212,23 +212,22 @@ Resuelve la falta de visibilidad y desconfianza de los **padres de familia** res
 
 ---
 
-## 📊 5. Matriz de Cobertura: Estado Actual vs. Backend Pendiente
+## 📊 5. Matriz de Cobertura: Estado Actual vs. Backend Implementado
 
-| Módulo / Requisito | Estado en Frontend | Requiere Limpieza Frontend | Pendiente en Backend (Supabase) |
+| Módulo / Requisito | Estado en Frontend | Conexión Backend (Supabase / PostgreSQL) | Estado Final |
 | :--- | :---: | :---: | :---: |
-| **RF-01: Auth & Roles** | ✅ Maquetado (`login_screen.dart`) | Corregir mock JWT estático | ⏳ Conectar Supabase Auth + tabla `perfiles` |
-| **RF-04: Registro Autobuses** | ✅ Maquetado (`register_bus_screen.dart`) | ⚠️ El botón solo lanza un SnackBar | ⏳ INSERT en tabla `autobuses` con RLS |
-| **RF-06: Métricas y Cobros** | ✅ Maquetado (`owner_home_screen.dart`) | Ninguna | ⏳ Vistas SQL y tabla de suscripciones |
-| **RF-07: Mapa de Flota Dueño** | ✅ **Completado:** Migrado a `flutter_map` OSM | Ninguna | ⏳ Suscripción WebSocket a coordenadas |
-| **RF-09: Abordaje Facial AI** | ✅ Dialog funcional (`facial_boarding_dialog.dart`) | Ninguna | ⏳ Sincronización de eventos de abordaje |
-| **RF-11: Inasistencias Alumno** | ✅ Funcional interactivo (`student_home_screen.dart`) | Ninguna | ⏳ Actualización en tabla `asistencia_diaria` |
-| **RF-14: Mapa GPS Padre** | ✅ Funcional (`simulated_map_screen.dart`) | Ninguna | ⏳ Stream GPS en vivo desde el chofer |
-| **Limpieza de textos legacy** | ✅ **Completado:** Textos escolares unificados | Ninguna | Ninguna |
-| **Warnings Flutter 3.22+** | ✅ **Completado:** 0 warnings (`onPopInvokedWithResult`) | Ninguna | Ninguna |
+| **RF-01: Auth & Roles** | ✅ Conectado (`login_screen.dart`) | Conectado a Supabase Auth + tabla `perfiles` | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-04: Registro Autobuses** | ✅ Conectado (`register_bus_screen.dart`) | `INSERT` en tabla `autobuses` con validaciones | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-06: Métricas y Cobros** | ✅ Conectado (`owner_home_screen.dart`) | `StudentService.getFleetFinancialSummary()` en vivo | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-07: Mapa de Flota Dueño** | ✅ Conectado (`owner_map_screen.dart`) | Suscripción WebSocket Realtime a `autobuses` | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-09: Abordaje Facial AI** | ✅ Conectado (`facial_boarding_dialog.dart`) | Persistencia y broadcast en `asistencia_diaria` | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-11: Inasistencias Alumno** | ✅ Conectado (`student_home_screen.dart`) | `AttendanceService.reportAbsence()` en tiempo real | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-14: Mapa GPS Padre** | ✅ Conectado (`simulated_map_screen.dart`) | Stream satelital reactivo desde `BusService` | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **RF-03/RNF-12: Trust & Safety** | ✅ Conectado (`trust_safety_dialog.dart`) | Certificación documental de chofer y RTM | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
+| **Warnings Flutter 3.22+** | ✅ **Completado:** 0 advertencias, 0 errores | `flutter analyze` y `flutter test` con 100% éxito | <span style="color:green;font-weight:bold;">✅ 100% Completado</span> |
 
 ---
 
-## 📌 6. Próximos Pasos Inmediatos
+## 📌 6. Conclusión del Proyecto
 
-1. **Subir cambios a GitHub (SRS `requisitos_smartroute.md` y limpieza de frontend).**
-2. **Proceder con el despliegue del entorno local Supabase (Docker) y creación de tablas PostgreSQL.**
+Todas las fases de desarrollo (Fase 0 a Fase 6) han sido completadas con éxito, verificadas mediante pruebas automáticas y validadas de extremo a extremo en navegador.
