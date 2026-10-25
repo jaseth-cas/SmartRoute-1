@@ -119,22 +119,27 @@
 
 ---
 
-### ⏳ Fase 5: Conexión Módulo Padre de Familia y GPS Satelital (PENDIENTE)
-* **Objetivo:** Brindar a los tutores la máxima transparencia y tranquilidad en el trayecto de sus hijos.
-* **Tareas Específicas:**
+### ✅ Fase 5: Conexión Módulo Padre de Familia y GPS Satelital (COMPLETADA)
+* **Objetivo:** Brindar a los tutores la máxima transparencia y tranquilidad en el trayecto de sus hijos en tiempo real.
+* **Componentes y Conexiones Implementados:**
   * **`StudentHomeScreen`:**
-    * Vincular dinámicamente la tarjeta del estudiante al hijo asociado al `padre_id` del usuario autenticado.
-    * Suscribirse en tiempo real a la columna `estado` de `asistencia_diaria`: cuando el chofer escanea al alumno, el padre ve cambiar su pantalla a *"A bordo del bus"* instantáneamente.
-  * **Botón de Inasistencia:**
-    * Conectar `_toggleAbsence` a `AttendanceService.reportAbsence()` para que el cambio impacte de inmediato en la base de datos y al chofer.
+    * Vinculación dinámica de la información del estudiante (`StudentService.getStudentsByBus`) y estado del día (`AttendanceService.streamTodayAttendance`).
+    * Tarjeta de seguridad de alta visibilidad que conmuta reactivamente entre *"Esperando ruta"*, *"A bordo del bus"* (con sello biométrico facial), *"Entregado seguro en colegio"* y *"Inasistencia reportada"*.
+    * Diálogo interactivo de reporte de inasistencia (RF-11) conectado a `AttendanceService.reportAbsence()` con notificación push y confirmación de recálculo de ruta sin la parada del alumno.
+    * Indicador de recarga suave pull-to-refresh y sincronización en vivo mediante Supabase Realtime WebSockets.
   * **`SimulatedMapScreen` (Rastreo Satelital en Vivo):**
-    * Sustituir el temporizador en bucle por el stream de coordenadas del autobús escolar en `public.autobuses`.
+    * Suscrito al stream reactivo de coordenadas de `BusService.streamBusByCode('BUS-01')`.
+    * Proyección de la posición GPS del vehículo en OpenStreetMap con telemetría en tiempo real: velocidad actual (`currentSpeedKmH`), estado de marcha y hora del último ping satelital.
+    * Tarjeta telemática flotante con chip de estado en directo ("Satelital Activo / Realtime").
+  * **`NotificationsScreen`:**
+    * Conexión con `IncidentService.getNotifications(busCode: 'BUS-01')` y suscripción en vivo a través de `IncidentService.streamNotifications('BUS-01')`.
+    * Notificaciones automáticas de contingencias emitidas por el chofer (fallas mecánicas, tráfico, accidentes) con pull-to-refresh y badges por tipo de evento.
   * **`EditProfileScreen`:**
-    * Conectar la edición de nombre y teléfono con la tabla `public.perfiles`.
+    * Persistencia de modificaciones de nombre, teléfono y avatar directamente en `public.perfiles` en Supabase PostgreSQL.
 
 ---
 
-### ⏳ Fase 6: Aseguramiento de Calidad, Sello Trust & Safety y Auditoría Final (PENDIENTE)
+### ⏳ Fase 6: Aseguramiento de Calidad, Sello Trust & Safety y Auditoría Final (EN CURSO)
 * **Objetivo:** Validación integral de seguridad, aislamiento de datos y resiliencia offline.
 * **Tareas Específicas:**
   * **Auditoría de Políticas RLS:** Comprobar que un padre no pueda leer la ubicación de autobuses donde no tiene hijos matriculados.

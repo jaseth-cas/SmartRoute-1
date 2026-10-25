@@ -8,6 +8,8 @@ import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/utilidades/validators.dart';
 import '../../autenticacion/datos/session_manager.dart';
 
+import '../../../nucleo/servicios/supabase_client.dart';
+
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
@@ -25,24 +27,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Simulate loading data from session
     final session = context.read<SessionManager>().currentSession;
     _name = session?.name ?? 'Usuario';
     _email = session?.email ?? 'padre.familia@smartroute.com';
     _phone = '555-0192'; // Mock phone
   }
 
-  void _saveProfile() {
+  Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      // Simulate saving profile logic
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Perfil actualizado exitosamente'),
-          backgroundColor: SmartColors.smartGreen,
-        ),
-      );
-      context.pop();
+      
+      final currentUserId = SupabaseConfig.client.auth.currentUser?.id;
+      if (currentUserId != null) {
+        try {
+          await SupabaseConfig.client.from('perfiles').update({
+            'nombre': _name.trim(),
+            'telefono': _phone.trim(),
+          }).eq('id', currentUserId);
+        } catch (e) {
+          debugPrint('Error actualizando perfil en Supabase: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Perfil actualizado exitosamente en el sistema'),
+            backgroundColor: SmartColors.smartGreen,
+          ),
+        );
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/student_profile');
+        }
+      }
     }
   }
 

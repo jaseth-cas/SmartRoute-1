@@ -1,10 +1,14 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
@@ -20,6 +24,80 @@ class StudentHomeScreen extends StatefulWidget {
 }
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
+  StudentPassengerMock? _student;
+  BusMock? _bus;
+  bool _isLoading = true;
+  StreamSubscription? _attendanceSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadStudentData();
+      _setupRealtimeSubscription();
+    });
+  }
+
+  @override
+  void dispose() {
+    _attendanceSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadStudentData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final studentService = context.read<StudentService>();
+      final busService = context.read<BusService>();
+      final sessionManager = context.read<SessionManager>();
+      final session = sessionManager.currentSession;
+
+      // Consultar estudiantes asociados al autobús o tutor
+      final students = await studentService.getStudentsByBus('BUS-01');
+
+      StudentPassengerMock? matchedStudent;
+      if (session != null && session.userId.isNotEmpty) {
+        // Intentar emparejar por nombre de tutor o ID
+        matchedStudent = students.cast<StudentPassengerMock?>().firstWhere(
+              (s) => s != null && (s.parentName.toLowerCase().contains(session.name.toLowerCase()) ||
+                  session.name.toLowerCase().contains(s.parentName.toLowerCase())),
+              orElse: () => null,
+            );
+      }
+
+      final student = matchedStudent ?? (students.isNotEmpty ? students.first : MockData.getPrimaryStudent());
+      final bus = await busService.getBusByCode(student.busCode) ?? MockData.getBusByCode(student.busCode);
+
+      if (mounted) {
+        setState(() {
+          _student = student;
+          _bus = bus;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando datos del estudiante: $e');
+      if (mounted) {
+        setState(() {
+          _student = MockData.getPrimaryStudent();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    final attendanceService = context.read<AttendanceService>();
+    _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
+      if (mounted) {
+        _loadStudentData(silent: true);
+      }
+    });
+  }
+
   void _toggleAbsence(StudentPassengerMock student) {
     final bool willBeAbsent = student.status != PassengerStatus.absent;
 
@@ -43,16 +121,27 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 backgroundColor: SmartColors.smartRed,
                 foregroundColor: Colors.white,
               ),
-              onPressed: () {
-                MockData.reportAbsence(student.id, true);
+              onPressed: () async {
                 Navigator.pop(ctx);
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Ausencia registrada. Ruta del transportista optimizada.'),
-                    backgroundColor: SmartColors.smartRed,
-                  ),
-                );
+                try {
+                  final attendanceService = context.read<AttendanceService>();
+                  await attendanceService.reportAbsence(
+                    studentId: student.id,
+                    isAbsent: true,
+                  );
+                  MockData.reportAbsence(student.id, true);
+                  await _loadStudentData(silent: true);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Ausencia registrada en PostgreSQL. Ruta del transportista optimizada.'),
+                        backgroundColor: SmartColors.smartRed,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('Error reportando ausencia: $e');
+                }
               },
               child: const Text('Confirmar Ausencia'),
             ),
@@ -60,14 +149,27 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
       );
     } else {
-      MockData.reportAbsence(student.id, false);
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Se ha reactivado la recogida escolar de hoy.'),
-          backgroundColor: SmartColors.smartGreen,
-        ),
-      );
+      () async {
+        try {
+          final attendanceService = context.read<AttendanceService>();
+          await attendanceService.reportAbsence(
+            studentId: student.id,
+            isAbsent: false,
+          );
+          MockData.reportAbsence(student.id, false);
+          await _loadStudentData(silent: true);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Se ha reactivado la recogida escolar de hoy.'),
+                backgroundColor: SmartColors.smartGreen,
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Error reactivando asistencia: $e');
+        }
+      }();
     }
   }
 
@@ -77,9 +179,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     final session = sessionManager.currentSession;
     final defaultRoute = MockData.getDefaultStudentRoute();
     final defaultStop = MockData.getDefaultStudentStop();
-    final student = MockData.getPrimaryStudent();
+    final student = _student ?? MockData.getPrimaryStudent();
     final isAbsent = student.status == PassengerStatus.absent;
     final isOnboard = student.status == PassengerStatus.onboard;
+    final isDelivered = student.status == PassengerStatus.delivered;
 
     return PopScope(
       canPop: false,
@@ -98,6 +201,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'Actualizar',
+              icon: const Icon(Icons.refresh, color: SmartColors.smartBlue),
+              onPressed: () => _loadStudentData(),
+            ),
+            IconButton(
               icon: const Icon(Icons.person, color: SmartColors.smartBlue),
               onPressed: () => context.push('/student_profile'),
             ),
@@ -115,7 +223,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           currentRoute: '/student_home',
           onNavigate: (route) => context.go(route),
         ),
-        body: SingleChildScrollView(
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: SmartColors.smartBlue))
+            : RefreshIndicator(
+                onRefresh: () => _loadStudentData(),
+                color: SmartColors.smartBlue,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,9 +276,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   gradient: LinearGradient(
                     colors: isAbsent
                         ? [Colors.grey.shade100, Colors.grey.shade200]
-                        : isOnboard
-                            ? [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)]
-                            : [const Color(0xFFEFF6FF), const Color(0xFFDBEAFE)],
+                        : isDelivered
+                            ? [const Color(0xFFF3E8FF), const Color(0xFFE9D5FF)]
+                            : isOnboard
+                                ? [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)]
+                                : [const Color(0xFFEFF6FF), const Color(0xFFDBEAFE)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -172,9 +288,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   border: Border.all(
                     color: isAbsent
                         ? Colors.grey.shade400
-                        : isOnboard
-                            ? SmartColors.smartGreen
-                            : SmartColors.smartBlue,
+                        : isDelivered
+                            ? Colors.purple
+                            : isOnboard
+                                ? SmartColors.smartGreen
+                                : SmartColors.smartBlue,
                     width: 1.5,
                   ),
                 ),
@@ -189,17 +307,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           decoration: BoxDecoration(
                             color: isAbsent
                                 ? Colors.grey.shade300
-                                : isOnboard
-                                    ? SmartColors.smartGreen
-                                    : SmartColors.smartBlue,
+                                : isDelivered
+                                    ? Colors.purple
+                                    : isOnboard
+                                        ? SmartColors.smartGreen
+                                        : SmartColors.smartBlue,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             isAbsent
                                 ? Icons.person_off
-                                : isOnboard
-                                    ? Icons.face_retouching_natural
-                                    : Icons.directions_bus,
+                                : isDelivered
+                                    ? Icons.school
+                                    : isOnboard
+                                        ? Icons.face_retouching_natural
+                                        : Icons.directions_bus,
                             color: Colors.white,
                             size: 20,
                           ),
@@ -212,32 +334,40 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                               Text(
                                 isAbsent
                                     ? 'Ausencia Notificada'
-                                    : isOnboard
-                                        ? '¡Estudiante a Bordo!'
-                                        : 'En Espera de Recogida',
+                                    : isDelivered
+                                        ? '¡Entregado en Colegio!'
+                                        : isOnboard
+                                            ? '¡Estudiante a Bordo!'
+                                            : 'En Espera de Recogida',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
                                   color: isAbsent
                                       ? Colors.grey.shade800
-                                      : isOnboard
-                                          ? const Color(0xFF065F46)
-                                          : SmartColors.smartBlue,
+                                      : isDelivered
+                                          ? Colors.purple.shade900
+                                          : isOnboard
+                                              ? const Color(0xFF065F46)
+                                              : SmartColors.smartBlue,
                                 ),
                               ),
                               Text(
                                 isAbsent
                                     ? 'El bus escolar omitirá tu parada hoy'
-                                    : isOnboard
-                                        ? 'Abordaje verificado a las ${student.lastBoardingTime ?? "07:14 AM"}'
-                                        : 'El bus escolar se aproxima a tu domicilio',
+                                    : isDelivered
+                                        ? 'Estudiante ingresó al colegio de forma segura'
+                                        : isOnboard
+                                            ? 'Abordaje verificado a las ${student.lastBoardingTime ?? "07:14 AM"}'
+                                            : 'El bus escolar se aproxima a tu domicilio',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: isAbsent
                                       ? Colors.grey.shade600
-                                      : isOnboard
-                                          ? const Color(0xFF047857)
-                                          : SmartColors.smartDarkBlue,
+                                      : isDelivered
+                                          ? Colors.purple.shade700
+                                          : isOnboard
+                                              ? const Color(0xFF047857)
+                                              : SmartColors.smartDarkBlue,
                                 ),
                               ),
                             ],
@@ -386,7 +516,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            defaultRoute?.name ?? 'Ruta Escolar Norte',
+                            _bus?.routeName ?? defaultRoute?.name ?? 'Ruta Escolar Norte',
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SmartColors.smartText),
                           ),
                           const Icon(Icons.directions_bus, color: SmartColors.smartBlue),
@@ -473,6 +603,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

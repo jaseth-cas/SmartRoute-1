@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
 import 'package:flutter_map/flutter_map.dart';
@@ -7,6 +8,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
@@ -27,14 +30,17 @@ class SimulatedMapScreen extends StatefulWidget {
 }
 
 class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
-  String lastUpdate = "Hace unos segundos";
+  String lastUpdate = "Conectando GPS...";
   bool isUpdating = false;
 
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
 
-  // Ruta simulada de los buses para no dejar el mapa vacío
+  BusMock? _liveBus;
+  StreamSubscription? _busSub;
+
+  // Ruta simulada de los buses para no dejar el mapa vacío si el GPS está apagado
   final List<LatLng> fullLoopPath = const [
     LatLng(9.9322, -84.0795),
     LatLng(9.9335, -84.0792),
@@ -53,15 +59,39 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   void initState() {
     super.initState();
     _determinePosition();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeToLiveBus();
+    });
 
-    // Mover el bus cada 2 segundos
-    loopTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (!isUpdating && mounted) {
+    // Mover el bus fallback si no hay coordenadas en vivo
+    loopTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!isUpdating && mounted && _liveBus == null) {
         setState(() {
           currentPointIndex = (currentPointIndex + 1) % fullLoopPath.length;
         });
       }
     });
+  }
+
+  void _subscribeToLiveBus() {
+    try {
+      final busService = context.read<BusService>();
+      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+
+      _busSub = busService.streamBusByCode(busCode).listen((bus) {
+        if (bus != null && mounted) {
+          setState(() {
+            _liveBus = bus;
+            lastUpdate = "GPS en vivo (Satelital)";
+          });
+          if (bus.latitude != null && bus.longitude != null) {
+            _mapController.move(LatLng(bus.latitude!, bus.longitude!), _mapController.camera.zoom);
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Aviso suscribiendo a bus en vivo: $e');
+    }
   }
 
   Future<void> _determinePosition() async {
@@ -95,7 +125,6 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           _currentPosition = LatLng(position.latitude, position.longitude);
           _isLoadingLocation = false;
         });
-        _mapController.move(_currentPosition!, 15.5);
       }
     } catch (e) {
       if (mounted) {
@@ -106,17 +135,32 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
   @override
   void dispose() {
+    _busSub?.cancel();
     loopTimer?.cancel();
     super.dispose();
   }
 
   void _syncData() async {
     setState(() => isUpdating = true);
+    try {
+      final busService = context.read<BusService>();
+      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+      final bus = await busService.getBusByCode(busCode);
+      if (bus != null && mounted) {
+        setState(() {
+          _liveBus = bus;
+          lastUpdate = "Actualizado ahora";
+        });
+        if (bus.latitude != null && bus.longitude != null) {
+          _mapController.move(LatLng(bus.latitude!, bus.longitude!), 15.5);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sincronizando bus: $e');
+    }
     await _determinePosition();
-    await Future.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() {
-        lastUpdate = "Actualizado ahora";
         isUpdating = false;
       });
     }
@@ -213,17 +257,20 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                                     child: _buildUserMarker(),
                                   ),
                                 Marker(
-                                  point: fullLoopPath[currentPointIndex],
+                                  point: (_liveBus?.latitude != null && _liveBus?.longitude != null)
+                                      ? LatLng(_liveBus!.latitude!, _liveBus!.longitude!)
+                                      : fullLoopPath[currentPointIndex],
                                   width: 60,
                                   height: 60,
-                                  child: _buildBusMarker(bus?.code ?? "BUS-01", SmartColors.smartBlue),
+                                  child: _buildBusMarker(_liveBus?.code ?? bus?.code ?? "BUS-01", SmartColors.smartBlue),
                                 ),
-                                Marker(
-                                  point: fullLoopPath[(currentPointIndex + 4) % fullLoopPath.length],
-                                  width: 60,
-                                  height: 60,
-                                  child: _buildBusMarker("BUS-02", SmartColors.smartGreen),
-                                ),
+                                if (_liveBus == null)
+                                  Marker(
+                                    point: fullLoopPath[(currentPointIndex + 4) % fullLoopPath.length],
+                                    width: 60,
+                                    height: 60,
+                                    child: _buildBusMarker("BUS-02", SmartColors.smartGreen),
+                                  ),
                               ],
                             ),
                           ],
@@ -306,11 +353,19 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: _MapStatusInfo(label: 'Velocidad', value: '${30 + math.Random().nextInt(11)} km/h', color: SmartColors.smartBlue),
+                            child: _MapStatusInfo(
+                              label: 'Velocidad',
+                              value: '${_liveBus?.currentSpeedKmH ?? (30 + math.Random().nextInt(11))} km/h',
+                              color: SmartColors.smartBlue,
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          const Expanded(
-                            child: _MapStatusInfo(label: 'Estado', value: 'Conectado', color: SmartColors.smartGreen),
+                          Expanded(
+                            child: _MapStatusInfo(
+                              label: 'Estado',
+                              value: _liveBus != null ? 'GPS En Vivo' : 'Conectado',
+                              color: SmartColors.smartGreen,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
