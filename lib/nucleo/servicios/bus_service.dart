@@ -157,6 +157,22 @@ class BusService {
     }
   }
 
+  /// Actualiza la certificación del Sello de Confianza (Trust & Safety) del autobús
+  Future<void> updateBusVerification({
+    required String busCode,
+    required bool isVerified,
+  }) async {
+    try {
+      await _supabase
+          .from('autobuses')
+          .update({'is_verified': isVerified})
+          .eq('codigo', busCode);
+    } catch (e) {
+      debugPrint('Error actualizando certificación del bus: $e');
+      rethrow;
+    }
+  }
+
   /// Stream en tiempo real de todos los autobuses (Para el mapa del Dueño de Flota)
   Stream<List<BusMock>> streamAllBuses() {
     return _supabase

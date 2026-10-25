@@ -15,6 +15,7 @@ import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({super.key});
@@ -381,15 +382,32 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.verified, color: SmartColors.smartGreen, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              isOnboard ? 'Prueba facial validada (Edge AI)' : 'Sello de Confianza SmartRoute',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SmartColors.smartText),
+                        InkWell(
+                          onTap: () {
+                            if (_bus != null) {
+                              TrustSafetyDialog.show(
+                                context,
+                                bus: _bus!,
+                                isOwnerView: false,
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.verified, color: SmartColors.smartGreen, size: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  isOnboard ? 'Prueba facial validada (Edge AI)' : 'Sello de Confianza SmartRoute',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SmartColors.smartText),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.info_outline, size: 12, color: SmartColors.smartGray),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                         Text(
                           student.busCode,

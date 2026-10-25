@@ -8,6 +8,7 @@ import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -158,22 +159,36 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
               const SizedBox(height: 20),
 
               // Sello Trust & Safety de la Empresa
-              SmartRouteCard(
-                color: SmartColors.smartLightGreen.withValues(alpha: 0.5),
-                child: Row(
-                  children: [
-                    const Icon(Icons.verified, color: SmartColors.smartGreen, size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Flota Certificada SmartRoute (Trust & Safety)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
-                          Text('Conductores con verificación de antecedentes y RTM aprobados.', style: TextStyle(fontSize: 10, color: SmartColors.smartText)),
-                        ],
+              InkWell(
+                onTap: () {
+                  if (_buses.isNotEmpty) {
+                    TrustSafetyDialog.show(
+                      context,
+                      bus: _buses.first,
+                      isOwnerView: true,
+                      onStatusChanged: _loadFleetData,
+                    );
+                  }
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: SmartRouteCard(
+                  color: SmartColors.smartLightGreen.withValues(alpha: 0.5),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified, color: SmartColors.smartGreen, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('Flota Certificada SmartRoute (Trust & Safety)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
+                            Text('Toca para auditar antecedentes, licencias y RTM de conductores.', style: TextStyle(fontSize: 10, color: SmartColors.smartText)),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const Icon(Icons.chevron_right, color: SmartColors.smartGreen, size: 20),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -584,11 +599,10 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
           Row(
             children: [
               Expanded(
-                flex: 1,
                 child: OutlinedButton.icon(
                   onPressed: _showEditDialog,
-                  icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('Editar', style: TextStyle(fontSize: 12)),
+                  icon: const Icon(Icons.edit, size: 14),
+                  label: const Text('Editar', style: TextStyle(fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: SmartColors.smartBlue,
                     side: const BorderSide(color: SmartColors.smartBorder),
@@ -596,13 +610,44 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
-                flex: 1,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    TrustSafetyDialog.show(
+                      context,
+                      bus: widget.bus,
+                      isOwnerView: true,
+                      onStatusChanged: widget.onUpdated,
+                    );
+                  },
+                  icon: Icon(
+                    widget.bus.isVerified ? Icons.verified : Icons.gpp_maybe,
+                    size: 14,
+                    color: widget.bus.isVerified ? SmartColors.smartGreen : SmartColors.smartYellow,
+                  ),
+                  label: Text(
+                    widget.bus.isVerified ? 'Sello OK' : 'Auditar',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: widget.bus.isVerified ? SmartColors.smartGreen : SmartColors.smartYellow,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: widget.bus.isVerified ? SmartColors.smartGreen : SmartColors.smartYellow,
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
                 child: ElevatedButton.icon(
                   onPressed: _showAssignDialog,
-                  icon: const Icon(Icons.person_add, size: 16),
-                  label: const Text('Asignar conductor', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  icon: const Icon(Icons.person_add, size: 14),
+                  label: const Text('Conductor', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: SmartColors.smartLightBlue,
                     foregroundColor: SmartColors.smartBlue,
