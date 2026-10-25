@@ -36,6 +36,7 @@ class IncidentService {
       });
     } catch (e) {
       debugPrint('Error en reportIncident: $e');
+      rethrow;
     }
   }
 

@@ -52,7 +52,11 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
             backgroundColor: SmartColors.smartGreen,
           ),
         );
-        context.pop();
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/driver_home');
+        }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

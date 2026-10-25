@@ -39,6 +39,7 @@ class AttendanceService {
       );
     } catch (e) {
       debugPrint('Error en checkInPassenger: $e');
+      rethrow;
     }
   }
 
@@ -59,6 +60,7 @@ class AttendanceService {
       );
     } catch (e) {
       debugPrint('Error en checkOutPassenger: $e');
+      rethrow;
     }
   }
 
@@ -84,6 +86,7 @@ class AttendanceService {
       );
     } catch (e) {
       debugPrint('Error en reportAbsence: $e');
+      rethrow;
     }
   }
 
