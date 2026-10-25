@@ -3,24 +3,85 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 
-class OwnerHomeScreen extends StatelessWidget {
+class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
+
+  @override
+  State<OwnerHomeScreen> createState() => _OwnerHomeScreenState();
+}
+
+class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
+  List<BusMock> _buses = [];
+  List<StudentPassengerMock> _passengers = [];
+  FleetFinancialSummary _financialSummary = const FleetFinancialSummary(
+    totalSeats: 36,
+    occupiedSeats: 32,
+    totalRevenue: 2080.0,
+    pendingRevenue: 65.0,
+    pendingPaymentsCount: 1,
+    totalStudents: 5,
+  );
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFleetData();
+  }
+
+  Future<void> _loadFleetData() async {
+    setState(() => _isLoading = true);
+    final busService = context.read<BusService>();
+    final studentService = context.read<StudentService>();
+
+    try {
+      final busesFuture = busService.getAllBuses();
+      final summaryFuture = studentService.getFleetFinancialSummary();
+      final studentsFuture = studentService.getAllStudents();
+
+      final results = await Future.wait([busesFuture, summaryFuture, studentsFuture]);
+
+      if (mounted) {
+        setState(() {
+          _buses = results[0] as List<BusMock>;
+          _financialSummary = results[1] as FleetFinancialSummary;
+          _passengers = results[2] as List<StudentPassengerMock>;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando datos de flota en OwnerHomeScreen: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _navigateToRegisterBus() async {
+    final result = await context.push<bool>('/register_bus');
+    if (result == true) {
+      await _loadFleetData();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final financialSummary = MockData.getFleetFinancialSummary();
 
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
       appBar: AppBar(
-        title: const Text('SmartRoute Transportista', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: SmartColors.smartBlue)),
+        title: const Text(
+          'SmartRoute Transportista',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: SmartColors.smartBlue),
+        ),
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
@@ -35,6 +96,11 @@ class OwnerHomeScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh, color: SmartColors.smartBlue),
+            tooltip: 'Recargar datos',
+            onPressed: _loadFleetData,
+          ),
+          IconButton(
             icon: const Icon(Icons.notifications_none, color: SmartColors.smartGray),
             onPressed: () {
               // Alerts
@@ -42,210 +108,287 @@ class OwnerHomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Perfil
-            Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: const BoxDecoration(
-                    color: SmartColors.smartLightBlue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.business_center, color: SmartColors.smartBlue, size: 30),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Panel de Dueño de Flota', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
-                      Text(
-                        session?.name ?? "Transportes Gómez",
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SmartColors.smartBlue, height: 1.2),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+      body: RefreshIndicator(
+        onRefresh: _loadFleetData,
+        color: SmartColors.smartBlue,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12.0),
+                  child: LinearProgressIndicator(
+                    backgroundColor: SmartColors.smartLightBlue,
+                    color: SmartColors.smartBlue,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 20),
 
-            // Sello Trust & Safety de la Empresa
-            SmartRouteCard(
-              color: SmartColors.smartLightGreen.withValues(alpha: 0.5),
-              child: Row(
+              // Perfil
+              Row(
                 children: [
-                  const Icon(Icons.verified, color: SmartColors.smartGreen, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('Flota Certificada SmartRoute', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
-                        Text('Conductores con verificación de antecedentes y RTM aprobados.', style: TextStyle(fontSize: 10, color: SmartColors.smartText)),
-                      ],
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: SmartColors.smartLightBlue,
+                      shape: BoxShape.circle,
                     ),
+                    child: const Icon(Icons.business_center, color: SmartColors.smartBlue, size: 30),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // --- MÉTRICAS DE NEGOCIO (SAAS / MARKETPLACE DE TRANSPORTISTAS) ---
-            const Text('Rendimiento del Negocio (Octubre)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _BusinessMetricCard(
-                  title: 'Ocupación de Cupos',
-                  value: '${financialSummary.occupiedSeats}/${financialSummary.totalSeats}',
-                  subtitle: '${financialSummary.occupancyRate.toStringAsFixed(0)}% Asientos ocupados',
-                  icon: Icons.event_seat,
-                  color: SmartColors.smartBlue,
-                  bgColor: SmartColors.smartLightBlue,
-                ),
-                const SizedBox(width: 12),
-                _BusinessMetricCard(
-                  title: 'Recaudación Mes',
-                  value: '\$${financialSummary.totalRevenue.toInt()}',
-                  subtitle: '${financialSummary.pendingPaymentsCount} Cobro en mora',
-                  icon: Icons.monetization_on,
-                  color: SmartColors.smartGreen,
-                  bgColor: SmartColors.smartLightGreen,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Botones de acción
-            ElevatedButton.icon(
-              onPressed: () => context.push('/register_bus'),
-              icon: const Icon(Icons.add),
-              label: const Text('Registrar nuevo autobús escolar', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: SmartColors.smartBlue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: () => context.push('/owner_map'),
-              icon: const Icon(Icons.map),
-              label: const Text('Monitoreo GPS de flota en vivo', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: SmartColors.smartDarkBlue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Mis Autobuses Escolares
-            const Text('Mis Unidades Escolares', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
-            const SizedBox(height: 12),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: MockData.buses.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                return _OwnerBusItemImproved(bus: MockData.buses[index]);
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Resumen de Cobro a Padres (Marketplace / SaaS)
-            const Text('Control de Cobros de Mensualidades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 12),
-            SmartRouteCard(
-              child: Column(
-                children: [
-                  ...MockData.passengers.take(3).map((p) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            Text('Tutor: ${p.parentName}', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: p.paymentStatus == 'Al día' ? SmartColors.smartLightGreen : SmartColors.smartLightRed,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            p.paymentStatus,
-                            style: TextStyle(
-                              color: p.paymentStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Historial de recorridos
-            const Text('Historial reciente de recorridos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 12),
-            SmartRouteCard(
-              child: Row(
-                children: [
-                  const Icon(Icons.history, color: SmartColors.smartGray, size: 20),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        _HistoryRow(text: 'BUS-01 completó recorrido hacia Colegio San José'),
-                        SizedBox(height: 4),
-                        _HistoryRow(text: 'BUS-02 disponible para jornada de la tarde'),
+                      children: [
+                        const Text('Panel de Dueño de Flota', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                        Text(
+                          session?.name ?? "Transportes Gómez (Escolar)",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SmartColors.smartBlue, height: 1.2),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-            // Cerrar sesión
-            ElevatedButton.icon(
-              onPressed: () {
-                sessionManager.logout();
-                context.go('/login');
-              },
-              icon: const Icon(Icons.lock, size: 18),
-              label: const Text('Cerrar sesión', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: SmartColors.smartRed,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              // Sello Trust & Safety de la Empresa
+              SmartRouteCard(
+                color: SmartColors.smartLightGreen.withValues(alpha: 0.5),
+                child: Row(
+                  children: [
+                    const Icon(Icons.verified, color: SmartColors.smartGreen, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text('Flota Certificada SmartRoute (Trust & Safety)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
+                          Text('Conductores con verificación de antecedentes y RTM aprobados.', style: TextStyle(fontSize: 10, color: SmartColors.smartText)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
-          ],
+              const SizedBox(height: 20),
+
+              // --- MÉTRICAS DE NEGOCIO (SAAS / MARKETPLACE DE TRANSPORTISTAS) ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Rendimiento del Negocio (En Vivo)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: SmartColors.smartLightGreen,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: SmartColors.smartGreen, size: 8),
+                        SizedBox(width: 4),
+                        Text('PostgreSQL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _BusinessMetricCard(
+                    title: 'Ocupación de Cupos',
+                    value: '${_financialSummary.occupiedSeats}/${_financialSummary.totalSeats}',
+                    subtitle: '${_financialSummary.occupancyRate.toStringAsFixed(0)}% Asientos ocupados',
+                    icon: Icons.event_seat,
+                    color: SmartColors.smartBlue,
+                    bgColor: SmartColors.smartLightBlue,
+                  ),
+                  const SizedBox(width: 12),
+                  _BusinessMetricCard(
+                    title: 'Recaudación Mes',
+                    value: '\$${_financialSummary.totalRevenue.toInt()}',
+                    subtitle: '${_financialSummary.pendingPaymentsCount} Cobro en mora',
+                    icon: Icons.monetization_on,
+                    color: SmartColors.smartGreen,
+                    bgColor: SmartColors.smartLightGreen,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Botones de acción
+              ElevatedButton.icon(
+                onPressed: _navigateToRegisterBus,
+                icon: const Icon(Icons.add),
+                label: const Text('Registrar nuevo autobús escolar', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SmartColors.smartBlue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: () => context.push('/owner_map'),
+                icon: const Icon(Icons.map),
+                label: const Text('Monitoreo GPS de flota en vivo', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SmartColors.smartDarkBlue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Mis Autobuses Escolares
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Mis Unidades Escolares', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: SmartColors.smartText)),
+                  Text('${_buses.length} unidades', style: const TextStyle(fontSize: 12, color: SmartColors.smartGray, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              if (_buses.isEmpty && !_isLoading)
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: SmartColors.smartBorder),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: const [
+                        Icon(Icons.directions_bus_outlined, size: 40, color: SmartColors.smartGray),
+                        SizedBox(height: 8),
+                        Text('No hay autobuses registrados aún', style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartText)),
+                        SizedBox(height: 4),
+                        Text('Registra tu primer autobús escolar para comenzar.', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _buses.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _OwnerBusItemImproved(
+                      bus: _buses[index],
+                      onUpdated: _loadFleetData,
+                    );
+                  },
+                ),
+              const SizedBox(height: 24),
+
+              // Resumen de Cobro a Padres (Marketplace / SaaS)
+              const Text('Control de Cobros de Mensualidades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              SmartRouteCard(
+                child: Column(
+                  children: [
+                    if (_passengers.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: Text('No hay pasajeros matriculados actualmente', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                      )
+                    else
+                      ..._passengers.take(5).map((p) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text('Tutor: ${p.parentName} (${p.busCode})', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Text('\$${p.monthlyFee.toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: p.paymentStatus == 'Al día' ? SmartColors.smartLightGreen : SmartColors.smartLightRed,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    p.paymentStatus,
+                                    style: TextStyle(
+                                      color: p.paymentStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      )),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Historial de recorridos
+              const Text('Historial reciente de recorridos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              SmartRouteCard(
+                child: Row(
+                  children: [
+                    const Icon(Icons.history, color: SmartColors.smartGray, size: 20),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          _HistoryRow(text: 'BUS-01 completó recorrido hacia Colegio San José'),
+                          SizedBox(height: 4),
+                          _HistoryRow(text: 'BUS-02 disponible para jornada de la tarde'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Cerrar sesión
+              ElevatedButton.icon(
+                onPressed: () {
+                  sessionManager.logout();
+                  context.go('/login');
+                },
+                icon: const Icon(Icons.lock, size: 18),
+                label: const Text('Cerrar sesión', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SmartColors.smartRed,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
@@ -305,8 +448,9 @@ class _BusinessMetricCard extends StatelessWidget {
 
 class _OwnerBusItemImproved extends StatefulWidget {
   final BusMock bus;
+  final VoidCallback? onUpdated;
 
-  const _OwnerBusItemImproved({required this.bus});
+  const _OwnerBusItemImproved({required this.bus, this.onUpdated});
 
   @override
   State<_OwnerBusItemImproved> createState() => _OwnerBusItemImprovedState();

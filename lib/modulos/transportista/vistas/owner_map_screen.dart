@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 /// Pantalla de Monitoreo GPS de Flota para el Transportista / Dueño de Autobuses.
@@ -20,9 +22,10 @@ class OwnerMapScreen extends StatefulWidget {
 
 class _OwnerMapScreenState extends State<OwnerMapScreen> {
   final MapController _mapController = MapController();
-  final List<BusMock> buses = MockData.buses;
+  List<BusMock> buses = MockData.buses;
+  StreamSubscription<List<BusMock>>? _busSubscription;
 
-  // Coordenadas simuladas para los dos autobuses principales en ruta escolar
+  // Coordenadas para animación suave de las unidades en trayecto escolar
   final List<LatLng> _bus1Route = const [
     LatLng(9.9322, -84.0795),
     LatLng(9.9335, -84.0792),
@@ -49,12 +52,54 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
   int _bus2Index = 0;
   Timer? _gpsTimer;
   BusMock? _selectedBus;
+  bool _isRealtimeActive = false;
 
   @override
   void initState() {
     super.initState();
     _selectedBus = buses.isNotEmpty ? buses.first : null;
     _startGpsSimulation();
+
+    // Conectar con la base de datos real en cuanto se monte el contexto
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initBusService();
+    });
+  }
+
+  Future<void> _initBusService() async {
+    try {
+      final busService = context.read<BusService>();
+      final realBuses = await busService.getAllBuses();
+      if (mounted && realBuses.isNotEmpty) {
+        setState(() {
+          buses = realBuses;
+          _selectedBus = buses.first;
+        });
+      }
+
+      // Suscripción al canal WebSocket en tiempo real de Supabase
+      _busSubscription = busService.streamAllBuses().listen(
+        (updatedBuses) {
+          if (mounted && updatedBuses.isNotEmpty) {
+            setState(() {
+              buses = updatedBuses;
+              _isRealtimeActive = true;
+              if (_selectedBus != null) {
+                _selectedBus = buses.firstWhere(
+                  (b) => b.code == _selectedBus!.code,
+                  orElse: () => buses.first,
+                );
+              }
+            });
+          }
+        },
+        onError: (err) {
+          debugPrint('Aviso Stream Realtime: $err');
+        },
+      );
+    } catch (e) {
+      debugPrint('Error inicializando buses en mapa: $e');
+    }
   }
 
   void _startGpsSimulation() {
@@ -71,6 +116,7 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
   @override
   void dispose() {
     _gpsTimer?.cancel();
+    _busSubscription?.cancel();
     super.dispose();
   }
 
@@ -144,12 +190,27 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: SmartColors.smartLightBlue,
+                    color: _isRealtimeActive ? SmartColors.smartLightGreen : SmartColors.smartLightBlue,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'GPS Satelital Activo',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SmartColors.smartBlue),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isRealtimeActive ? Icons.wifi : Icons.gps_fixed,
+                        size: 12,
+                        color: _isRealtimeActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isRealtimeActive ? 'Realtime Conectado' : 'GPS Satelital Activo',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _isRealtimeActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -182,38 +243,36 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                     ),
                   ],
                 ),
-                // Marcadores de autobuses
+                // Marcadores dinámicos para todos los autobuses
                 MarkerLayer(
                   markers: [
-                    // Bus 1
-                    Marker(
-                      point: bus1Pos,
-                      width: 70,
-                      height: 70,
-                      child: GestureDetector(
-                        onTap: () => _centerOnBus(bus1Pos, buses[0]),
-                        child: _BusGpsMarker(
-                          code: buses.isNotEmpty ? buses[0].code : 'BUS-01',
-                          color: SmartColors.smartBlue,
-                          isSelected: _selectedBus?.code == buses[0].code,
-                        ),
-                      ),
-                    ),
-                    // Bus 2 (si existe)
-                    if (buses.length > 1)
-                      Marker(
-                        point: bus2Pos,
-                        width: 70,
-                        height: 70,
-                        child: GestureDetector(
-                          onTap: () => _centerOnBus(bus2Pos, buses[1]),
-                          child: _BusGpsMarker(
-                            code: buses[1].code,
-                            color: SmartColors.smartGreen,
-                            isSelected: _selectedBus?.code == buses[1].code,
+                    for (int i = 0; i < buses.length; i++) ...[
+                      () {
+                        final bus = buses[i];
+                        final pos = i == 0
+                            ? bus1Pos
+                            : (i == 1
+                                ? bus2Pos
+                                : LatLng(bus.latitude ?? (9.9340 + (0.0015 * i)), bus.longitude ?? (-84.0780 + (0.0015 * i))));
+                        final markerColor = i == 0
+                            ? SmartColors.smartBlue
+                            : (i == 1 ? SmartColors.smartGreen : SmartColors.smartDarkBlue);
+
+                        return Marker(
+                          point: pos,
+                          width: 70,
+                          height: 70,
+                          child: GestureDetector(
+                            onTap: () => _centerOnBus(pos, bus),
+                            child: _BusGpsMarker(
+                              code: bus.code,
+                              color: markerColor,
+                              isSelected: _selectedBus?.code == bus.code,
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      }(),
+                    ],
                   ],
                 ),
               ],
@@ -311,41 +370,50 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    for (int i = 0; i < buses.length; i++) ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: _selectedBus?.code == buses[i].code
-                                  ? SmartColors.smartBlue
-                                  : SmartColors.smartBorder,
-                              width: _selectedBus?.code == buses[i].code ? 2 : 1,
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (int i = 0; i < buses.length; i++) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: _selectedBus?.code == buses[i].code
+                                    ? SmartColors.smartBlue
+                                    : SmartColors.smartBorder,
+                                width: _selectedBus?.code == buses[i].code ? 2 : 1,
+                              ),
+                              backgroundColor: _selectedBus?.code == buses[i].code
+                                  ? SmartColors.smartLightBlue.withValues(alpha: 0.3)
+                                  : Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             ),
-                            backgroundColor: _selectedBus?.code == buses[i].code
-                                ? SmartColors.smartLightBlue.withValues(alpha: 0.3)
-                                : Colors.white,
-                          ),
-                          onPressed: () {
-                            final targetPos = i == 0 ? bus1Pos : bus2Pos;
-                            _centerOnBus(targetPos, buses[i]);
-                          },
-                          child: Text(
-                            'Ver ${buses[i].code}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: _selectedBus?.code == buses[i].code
-                                  ? SmartColors.smartBlue
-                                  : SmartColors.smartGray,
+                            onPressed: () {
+                              final targetPos = i == 0
+                                  ? bus1Pos
+                                  : (i == 1
+                                      ? bus2Pos
+                                      : LatLng(buses[i].latitude ?? (9.9340 + (0.0015 * i)),
+                                          buses[i].longitude ?? (-84.0780 + (0.0015 * i))));
+                              _centerOnBus(targetPos, buses[i]);
+                            },
+                            child: Text(
+                              'Ver ${buses[i].code}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _selectedBus?.code == buses[i].code
+                                    ? SmartColors.smartBlue
+                                    : SmartColors.smartGray,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      if (i < buses.length - 1) const SizedBox(width: 8),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ],
             ),

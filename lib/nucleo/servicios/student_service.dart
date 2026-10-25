@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
@@ -103,6 +104,26 @@ class StudentService {
     // Fallback: Primer estudiante del sistema
     final fallbackList = await getStudentsByBus('BUS-01');
     return fallbackList.isNotEmpty ? fallbackList.first : null;
+  }
+
+  /// Obtiene todos los estudiantes registrados para el control del transportista
+  Future<List<StudentPassengerMock>> getAllStudents() async {
+    try {
+      final response = await _supabase
+          .from('estudiantes_pasajeros')
+          .select()
+          .order('orden', ascending: true);
+
+      final list = (response as List).map((row) {
+        return StudentPassengerMock.fromMap(row as Map<String, dynamic>);
+      }).toList();
+
+      if (list.isNotEmpty) return list;
+      return MockData.passengers;
+    } catch (e) {
+      debugPrint('Error en getAllStudents: $e');
+      return MockData.passengers;
+    }
   }
 
   /// Calcula el resumen financiero y métricas de aforo para el transportista

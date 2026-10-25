@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
@@ -16,10 +17,12 @@ class BusService {
           .select()
           .order('codigo', ascending: true);
 
-      return (response as List).map((row) => BusMock.fromMap(row)).toList();
+      final list = (response as List).map((row) => BusMock.fromMap(row)).toList();
+      if (list.isNotEmpty) return list;
+      return MockData.buses;
     } catch (e) {
       debugPrint('Error en getAllBuses: $e');
-      return [];
+      return MockData.buses;
     }
   }
 
@@ -88,7 +91,7 @@ class BusService {
   }) async {
     final currentUserId = _supabase.auth.currentUser?.id;
 
-    final data = {
+    final data = <String, dynamic>{
       'codigo': code.trim().toUpperCase(),
       'placa': plate.trim().toUpperCase(),
       'modelo': model.trim(),
@@ -97,9 +100,13 @@ class BusService {
       'estado': 'Disponible',
       'colegio_asignado': schoolName,
       'nombre_ruta': routeName,
-      'dueno_id': currentUserId,
       'is_verified': true,
+      'latitud_actual': 9.9340 + (0.0012 * ((capacity % 6) + 1)),
+      'longitud_actual': -84.0780 - (0.0012 * ((capacity % 6) + 1)),
     };
+    if (currentUserId != null) {
+      data['dueno_id'] = currentUserId;
+    }
 
     final response = await _supabase
         .from('autobuses')

@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
+import 'package:provider/provider.dart';
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
+import '../../../nucleo/servicios/bus_service.dart';
 
 class RegisterBusScreen extends StatefulWidget {
   const RegisterBusScreen({super.key});
@@ -19,21 +20,52 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
   String plate = "";
   String model = "";
   String capacity = "";
+  String school = "Colegio San José";
+  bool _isLoading = false;
 
-  void _saveBus() {
+  Future<void> _saveBus() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      // Simulate save and return
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Autobús registrado correctamente'),
-          backgroundColor: SmartColors.smartGreen,
-        ),
-      );
-      if (context.canPop()) {
-        context.pop();
-      } else {
-        context.go('/owner_home');
+      setState(() => _isLoading = true);
+
+      try {
+        final busService = context.read<BusService>();
+        final newBus = await busService.registerBus(
+          code: code,
+          plate: plate,
+          model: model,
+          capacity: int.parse(capacity),
+          schoolName: school.isNotEmpty ? school : 'Colegio San José',
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Autobús ${newBus.code} registrado correctamente en PostgreSQL'),
+            backgroundColor: SmartColors.smartGreen,
+          ),
+        );
+
+        if (context.canPop()) {
+          context.pop(true);
+        } else {
+          context.go('/owner_home');
+        }
+      } catch (e) {
+        if (!mounted) return;
+        final errorMsg = e.toString().contains('23505') || e.toString().contains('unique')
+            ? 'Ya existe una unidad con ese código o placa en el sistema.'
+            : 'Error al registrar unidad: $e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -113,8 +145,9 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
               ),
               const SizedBox(height: 32),
               PrimaryButton(
-                text: 'Guardar Autobús',
-                icon: Icons.save,
+                text: _isLoading ? 'Guardando en la base de datos...' : 'Guardar Autobús',
+                icon: _isLoading ? null : Icons.save,
+                enabled: !_isLoading,
                 onPressed: _saveBus,
               ),
             ],
