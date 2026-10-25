@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
-import '../../../nucleo/datos/mock_data.dart';
-import '../../../nucleo/modelos/models.dart';
+import '../../../nucleo/servicios/incident_service.dart';
 import '../../../nucleo/widgets/driver_bottom_bar.dart';
 
 class ReportIncidentScreen extends StatefulWidget {
@@ -21,6 +21,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   String title = "";
   String description = "";
   String incidentType = "Mecánico"; // Valor por defecto
+  bool _isLoading = false;
 
   final List<String> incidentTypes = [
     "Mecánico",
@@ -30,29 +31,40 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     "Otro"
   ];
 
-  void _submitReport() async {
+  Future<void> _submitReport() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      
-      final newNotification = NotificationMock(
-        id: DateTime.now().millisecondsSinceEpoch,
-        title: title,
-        message: '[$incidentType] $description',
-        time: 'Justo ahora',
-        read: false,
-        type: (incidentType == 'Mecánico' || incidentType == 'Accidente') ? 'alert' : 'info',
-      );
-      
-      await MockData.addNotification(newNotification);
+      setState(() => _isLoading = true);
 
-      if (mounted) {
+      try {
+        final incidentService = context.read<IncidentService>();
+        await incidentService.reportIncident(
+          busCode: 'BUS-01',
+          title: title,
+          description: description,
+          incidentType: incidentType,
+        );
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Incidente reportado exitosamente'),
-            backgroundColor: SmartColors.smartYellow,
+            content: Text('Incidente registrado y notificado en tiempo real a los padres'),
+            backgroundColor: SmartColors.smartGreen,
           ),
         );
         context.pop();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al reportar incidente: $e'),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -171,8 +183,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
               const SizedBox(height: 32),
               
               PrimaryButton(
-                text: 'Enviar Reporte',
-                icon: Icons.send,
+                text: _isLoading ? 'Enviando alerta...' : 'Enviar Reporte',
+                icon: _isLoading ? null : Icons.send,
+                enabled: !_isLoading,
                 backgroundColor: SmartColors.smartYellow,
                 foregroundColor: Colors.white,
                 onPressed: _submitReport,

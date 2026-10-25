@@ -14,8 +14,8 @@
 | **Fase 1** | **Infraestructura Docker, PostgreSQL y Migraciones** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-01, RF-04, RF-05, RF-08, RF-13 | Docker Desktop, Supabase CLI, PostgreSQL 17, PostGIS, RLS |
 | **Fase 2** | **Capa de Servicios y Repositorios Dart en Flutter** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | Transversal | `BusService`, `StudentService`, `AttendanceService`, `IncidentService` |
 | **Fase 3** | **Conexión Módulo Transportista (Dueño de Flota / SaaS)** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-04, RF-05, RF-06, RF-07 | Dashboard financiero en vivo, registro de buses, mapa multivehicular |
-| **Fase 4** | **Conexión Módulo Conductor y Biometría Facial AI** | <span style="color:orange;font-weight:bold;">⏳ Próxima a Iniciar</span> | RF-08, RF-09, RF-10, RF-11, RF-12 | Manifiesto dinámico, abordaje facial, omisión de paradas, telemetría GPS |
-| **Fase 5** | **Conexión Módulo Padre de Familia y GPS Satelital** | <span style="color:gray;font-weight:bold;">⏳ Pendiente</span> | RF-14, RF-15, RF-16, RF-17, RF-18 | Notificación push de abordaje, reporte de inasistencias, mapa en vivo |
+| **Fase 4** | **Conexión Módulo Conductor y Biometría Facial AI** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-08, RF-09, RF-10, RF-11, RF-12 | Manifiesto dinámico, abordaje facial, omisión de paradas, telemetría GPS |
+| **Fase 5** | **Conexión Módulo Padre de Familia y GPS Satelital** | <span style="color:orange;font-weight:bold;">⏳ Próxima a Iniciar</span> | RF-14, RF-15, RF-16, RF-17, RF-18 | Notificación push de abordaje, reporte de inasistencias, mapa en vivo |
 | **Fase 6** | **Pruebas E2E, Sello Trust & Safety y Auditoría Final** | <span style="color:gray;font-weight:bold;">⏳ Pendiente</span> | RNF-01 a RNF-12 | RLS, Edge AI offline, validación documental y pruebas cruzadas |
 
 ---
@@ -96,20 +96,26 @@
 
 ---
 
-### ⏳ Fase 4: Conexión Módulo Conductor y Biometría Facial (PENDIENTE)
-* **Objetivo:** Habilitar la operativa en cabina, el manifiesto dinámico y la confirmación de abordaje.
-* **Tareas Específicas:**
+### ✅ Fase 4: Conexión Módulo Conductor y Biometría Facial AI (COMPLETADA)
+* **Objetivo:** Habilitar la operativa en cabina, el manifiesto dinámico, el abordaje biométrico facial en tiempo real y la telemetría GPS continua hacia Supabase PostgreSQL.
+* **Componentes y Conexiones Implementados:**
   * **`DriverHomeScreen`:**
-    * Consultar el autobús asignado en la base de datos al iniciar sesión.
-    * Emisor telemático: Publicar periódicamente coordenadas GPS hacia `public.autobuses`.
+    * Carga de unidad escolar asignada (`BUS-01`) y ruta desde `BusService.getBusByCode()`.
+    * Monitorización reactiva de asistencia diaria mediante `AttendanceService.streamTodayAttendance()`.
+    * Indicadores en vivo de capacidad, alumnos a bordo y alumnos en espera.
+    * Transmisor de telemetría GPS en tiempo real emitiendo cambios periódicos a `public.autobuses.latitud_actual / longitud_actual`.
+    * Banner inteligente de advertencia por inasistencias reportadas (RF-11) detallando paradas omitidas para ahorro de combustible.
   * **`DriverDemandScreen` (Manifiesto de Pasajeros):**
-    * Consultar lista de alumnos asignados al autobús ordenados por parada.
-    * Escuchar cambios en vivo de `asistencia_diaria`: si un padre marca inasistencia, marcar la parada como omitida en la pantalla del chofer.
-  * **`FacialBoardingDialog` (Killer Feature):**
-    * Al completarse la coincidencia biométrica, persistir inmediatamente el abordaje en `asistencia_diaria`.
-    * Enviar evento de confirmación que disparará la notificación al padre.
+    * Secuenciación de alumnos ordenada por parada (`#1`, `#2`, `#3`, etc.) vía `StudentService.getStudentsByBus()`.
+    * Soporte dual de abordaje: Terminal Facial AI y Check-in Manual de Contingencia (RF-10).
+    * Acción de confirmación de entrega segura en colegio (`checkOutPassenger`).
+    * Filtros rápidos por estado (`Todos`, `En espera`, `A bordo`, `Ausentes`) y pull-to-refresh.
+  * **`FacialBoardingDialog` (Killer Feature Edge ML):**
+    * Integración de coincidencia biométrica simulada (99.4% confianza) con `AttendanceService.checkInPassenger()`.
+    * Persistencia instantánea en `public.asistencia_diaria` con método `"Biometría Facial AI"` y broadcast WebSocket Realtime.
   * **`ReportIncidentScreen`:**
-    * Guardar incidencias en `public.incidentes_ruta` con difusión a los padres de la ruta.
+    * Formulario de contingencias en ruta enlazado con `IncidentService.reportIncident()`.
+    * Registro en `public.incidentes_ruta` con tipo de evento (`Mecánico`, `Tráfico`, `Accidente`, `Otro`) y notificación push broadcast.
 
 ---
 

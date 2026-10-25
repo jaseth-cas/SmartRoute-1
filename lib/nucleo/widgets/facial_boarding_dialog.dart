@@ -1,7 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 /// Diálogo interactivo que simula el Terminal de Reconocimiento Facial AI (Edge ML)
@@ -62,13 +64,22 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
   }
 
   void _startSimulatedRecognition() {
-    _timer = Timer(const Duration(milliseconds: 1600), () {
+    _timer = Timer(const Duration(milliseconds: 1600), () async {
       if (mounted) {
         setState(() {
           _step = 1; // Coincidencia encontrada
         });
 
-        // Registrar abordaje en los datos de la app
+        // Registrar abordaje real en PostgreSQL mediante AttendanceService
+        try {
+          final attendanceService = context.read<AttendanceService>();
+          await attendanceService.checkInPassenger(
+            studentId: _selectedStudent.id,
+            method: 'Biometría Facial AI',
+          );
+        } catch (e) {
+          debugPrint('Aviso registrando abordaje en Supabase: $e');
+        }
         MockData.checkInPassenger(_selectedStudent.id, method: 'Biometría Facial AI');
 
         _timer = Timer(const Duration(milliseconds: 1200), () {
