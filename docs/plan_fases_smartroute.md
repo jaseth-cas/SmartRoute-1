@@ -15,8 +15,8 @@
 | **Fase 2** | **Capa de Servicios y Repositorios Dart en Flutter** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | Transversal | `BusService`, `StudentService`, `AttendanceService`, `IncidentService` |
 | **Fase 3** | **Conexión Módulo Transportista (Dueño de Flota / SaaS)** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-04, RF-05, RF-06, RF-07 | Dashboard financiero en vivo, registro de buses, mapa multivehicular |
 | **Fase 4** | **Conexión Módulo Conductor y Biometría Facial AI** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-08, RF-09, RF-10, RF-11, RF-12 | Manifiesto dinámico, abordaje facial, omisión de paradas, telemetría GPS |
-| **Fase 5** | **Conexión Módulo Padre de Familia y GPS Satelital** | <span style="color:orange;font-weight:bold;">⏳ Próxima a Iniciar</span> | RF-14, RF-15, RF-16, RF-17, RF-18 | Notificación push de abordaje, reporte de inasistencias, mapa en vivo |
-| **Fase 6** | **Pruebas E2E, Sello Trust & Safety y Auditoría Final** | <span style="color:gray;font-weight:bold;">⏳ Pendiente</span> | RNF-01 a RNF-12 | RLS, Edge AI offline, validación documental y pruebas cruzadas |
+| **Fase 5** | **Conexión Módulo Padre de Familia y GPS Satelital** | <span style="color:green;font-weight:bold;">✅ Completada (100%)</span> | RF-14, RF-15, RF-16, RF-17, RF-18 | Notificación push de abordaje, reporte de inasistencias, mapa en vivo |
+| **Fase 6** | **Pruebas E2E, Sello Trust & Safety y Auditoría Final** | <span style="color:blue;font-weight:bold;">🔄 En Curso / Cierre</span> | RNF-01 a RNF-12 | RLS, Sello Trust & Safety, credenciales determinísticas y pruebas E2E |
 
 ---
 
