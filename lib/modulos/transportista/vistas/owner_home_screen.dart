@@ -6,19 +6,79 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 
-class OwnerHomeScreen extends StatelessWidget {
+class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
+
+  @override
+  State<OwnerHomeScreen> createState() => _OwnerHomeScreenState();
+}
+
+class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
+  List<BusMock> _buses = [];
+  List<StudentPassengerMock> _passengers = [];
+  FleetFinancialSummary _financialSummary = const FleetFinancialSummary(
+    totalSeats: 36,
+    occupiedSeats: 32,
+    totalRevenue: 2080.0,
+    pendingRevenue: 65.0,
+    pendingPaymentsCount: 1,
+    totalStudents: 5,
+  );
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFleetData();
+  }
+
+  Future<void> _loadFleetData() async {
+    setState(() => _isLoading = true);
+    final busService = context.read<BusService>();
+    final studentService = context.read<StudentService>();
+
+    try {
+      final busesFuture = busService.getAllBuses();
+      final summaryFuture = studentService.getFleetFinancialSummary();
+      final studentsFuture = studentService.getAllStudents();
+
+      final results = await Future.wait([busesFuture, summaryFuture, studentsFuture]);
+
+      if (mounted) {
+        setState(() {
+          _buses = results[0] as List<BusMock>;
+          _financialSummary = results[1] as FleetFinancialSummary;
+          _passengers = results[2] as List<StudentPassengerMock>;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando datos de flota en OwnerHomeScreen: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _navigateToRegisterBus() async {
+    final result = await context.push<bool>('/register_bus');
+    if (result == true) {
+      await _loadFleetData();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final financialSummary = MockData.getFleetFinancialSummary();
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -32,58 +92,58 @@ class OwnerHomeScreen extends StatelessWidget {
               children: [
                 // Barra superior Quivox Minimalista
                 Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  NeumorphicBox(
-                    isPill: true,
-                    padding: const EdgeInsets.all(12),
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go('/role_home');
-                      }
-                    },
-                    child: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 16,
-                      color: SmartColors.deepBlack,
-                    ),
-                  ),
-                  Column(
-                    children: [
-                      Text(
-                        'FLEET DISPATCH HUB',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 10,
-                          letterSpacing: 1.5,
-                          fontWeight: FontWeight.w700,
-                          color: SmartColors.deepPetrol,
-                        ),
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    NeumorphicBox(
+                      isPill: true,
+                      padding: const EdgeInsets.all(12),
+                      onTap: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/role_home');
+                        }
+                      },
+                      child: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 16,
+                        color: SmartColors.deepBlack,
                       ),
-                      Text(
-                        'Panel Transportista',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: SmartColors.deepBlack,
-                        ),
-                      ),
-                    ],
-                  ),
-                  NeumorphicBox(
-                    isPill: true,
-                    padding: const EdgeInsets.all(12),
-                    onTap: () => context.push('/notifications'),
-                    child: const Icon(
-                      Icons.notifications_none_rounded,
-                      size: 18,
-                      color: SmartColors.deepBlack,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
+                    Column(
+                      children: [
+                        Text(
+                          'FLEET DISPATCH HUB',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w700,
+                            color: SmartColors.deepPetrol,
+                          ),
+                        ),
+                        Text(
+                          'Panel Transportista',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: SmartColors.deepBlack,
+                          ),
+                        ),
+                      ],
+                    ),
+                    NeumorphicBox(
+                      isPill: true,
+                      padding: const EdgeInsets.all(12),
+                      onTap: () => context.push('/notifications'),
+                      child: const Icon(
+                        Icons.notifications_none_rounded,
+                        size: 18,
+                        color: SmartColors.deepBlack,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
 
               // Tarjeta Perfil Empresa Neumórfica
               NeumorphicBox(
@@ -208,7 +268,7 @@ class OwnerHomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '${financialSummary.occupiedSeats}/${financialSummary.totalSeats}',
+                                  '${_financialSummary.occupiedSeats}/${_financialSummary.totalSeats}',
                                   style: GoogleFonts.jetBrainsMono(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w800,
@@ -217,7 +277,7 @@ class OwnerHomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${financialSummary.occupancyRate.toStringAsFixed(0)}% ocupación activa',
+                                  '${_financialSummary.occupancyRate.toStringAsFixed(0)}% ocupación activa',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
@@ -261,7 +321,7 @@ class OwnerHomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '\$${financialSummary.totalRevenue.toInt()}',
+                                  '\$${_financialSummary.totalRevenue.toInt()}',
                                   style: GoogleFonts.jetBrainsMono(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w800,
@@ -270,7 +330,7 @@ class OwnerHomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${financialSummary.pendingPaymentsCount} pendiente de cobro',
+                                  '${_financialSummary.pendingPaymentsCount} pendiente de cobro',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
@@ -399,10 +459,14 @@ class OwnerHomeScreen extends StatelessWidget {
                     ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: MockData.buses.length,
+                      itemCount: _buses.isNotEmpty ? _buses.length : MockData.buses.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 14),
                       itemBuilder: (context, index) {
-                        return _OwnerBusItemImproved(bus: MockData.buses[index]);
+                        final bus = _buses.isNotEmpty ? _buses[index] : MockData.buses[index];
+                        return _OwnerBusItemImproved(
+                          bus: bus,
+                          onUpdated: _loadFleetData,
+                        );
                       },
                     ),
                     const SizedBox(height: 24),
@@ -461,8 +525,9 @@ class OwnerHomeScreen extends StatelessWidget {
 
 class _OwnerBusItemImproved extends StatefulWidget {
   final BusMock bus;
+  final VoidCallback? onUpdated;
 
-  const _OwnerBusItemImproved({required this.bus});
+  const _OwnerBusItemImproved({required this.bus, this.onUpdated});
 
   @override
   State<_OwnerBusItemImproved> createState() => _OwnerBusItemImprovedState();
@@ -705,7 +770,7 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                     child: Text(
                       'EDITAR',
                       style: GoogleFonts.jetBrainsMono(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
                         color: SmartColors.deepBlack,
@@ -714,7 +779,45 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
+              Expanded(
+                child: NeumorphicBox(
+                  isPill: true,
+                  onTap: () {
+                    TrustSafetyDialog.show(
+                      context,
+                      bus: widget.bus,
+                      isOwnerView: true,
+                      onStatusChanged: widget.onUpdated,
+                    );
+                  },
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.bus.isVerified ? Icons.verified : Icons.gpp_maybe,
+                          size: 13,
+                          color: widget.bus.isVerified ? SmartColors.smartGreen : SmartColors.smartYellow,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          widget.bus.isVerified ? 'SELLO OK' : 'AUDITAR',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: widget.bus.isVerified ? SmartColors.smartGreen : SmartColors.smartYellow,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: NeumorphicBox(
                   isPill: true,
@@ -725,7 +828,7 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                     child: Text(
                       'ASIGNAR',
                       style: GoogleFonts.jetBrainsMono(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
                         color: SmartColors.electricCyan,

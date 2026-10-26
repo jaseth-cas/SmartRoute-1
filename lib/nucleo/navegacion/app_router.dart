@@ -50,7 +50,22 @@ class AppRouter {
         GoRoute(
           path: '/login',
           builder: (context, state) => LoginScreen(
-            onLoginSuccess: () => context.go('/role_home'),
+            onLoginSuccess: () {
+              final role = sessionManager.currentSession?.role;
+              switch (role) {
+                case UserRole.student:
+                  context.go('/student_home');
+                  break;
+                case UserRole.driver:
+                  context.go('/driver_home');
+                  break;
+                case UserRole.owner:
+                  context.go('/owner_home');
+                  break;
+                default:
+                  context.go('/role_home');
+              }
+            },
           ),
         ),
         GoRoute(

@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 
-/// Simula un Payload de un token JWT.
+/// Simula o encapsula un Payload de un token JWT (Mock o Supabase).
 /// Almacena los datos del usuario que ha iniciado sesión, su rol y los tiempos de expiración.
 class JwtSession {
   final String token;
-  final int userId;
+  final String userId;
   final String name;
   final String email;
   final UserRole role;
@@ -24,7 +24,7 @@ class JwtSession {
 }
 
 /// Proveedor falso (Mock) de tokens JWT.
-/// Genera sesiones estáticas para los diferentes roles con fines de demostración.
+/// Genera sesiones estáticas para los diferentes roles con fines de demostración rápida.
 class FakeJwtProvider {
   static JwtSession createSessionForRole(UserRole role, {String? customName}) {
     final issuedAt = DateTime.now().millisecondsSinceEpoch;
@@ -34,7 +34,7 @@ class FakeJwtProvider {
       case UserRole.student:
         return JwtSession(
           token: "fake.jwt.student.token",
-          userId: 1,
+          userId: "1",
           name: customName ?? "Carlos Gómez (Tutor)",
           email: "carlos.gomez@smartroute.com",
           role: UserRole.student,
@@ -44,7 +44,7 @@ class FakeJwtProvider {
       case UserRole.driver:
         return JwtSession(
           token: "fake.jwt.driver.token",
-          userId: 3,
+          userId: "3",
           name: customName ?? "Juan Pérez",
           email: "juan.conductor@smartroute.com",
           role: UserRole.driver,
@@ -54,7 +54,7 @@ class FakeJwtProvider {
       case UserRole.owner:
         return JwtSession(
           token: "fake.jwt.owner.token",
-          userId: 4,
+          userId: "4",
           name: customName ?? "Transportes Gómez (Escolar)",
           email: "transportes.gomez@smartroute.com",
           role: UserRole.owner,
@@ -83,6 +83,28 @@ class SessionManager extends ChangeNotifier {
   /// Cambia de rol de forma instantánea entre perfiles
   void switchRole(UserRole role) {
     _currentSession = FakeJwtProvider.createSessionForRole(role);
+    notifyListeners();
+  }
+
+  /// Inicia sesión con credenciales reales verificadas de Supabase
+  void loginWithSupabase({
+    required String userId,
+    required String name,
+    required String email,
+    required UserRole role,
+    required String token,
+  }) {
+    final issuedAt = DateTime.now().millisecondsSinceEpoch;
+    final expiresAt = issuedAt + 3600000; // 1 hora de validez
+    _currentSession = JwtSession(
+      token: token,
+      userId: userId,
+      name: name,
+      email: email,
+      role: role,
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
+    );
     notifyListeners();
   }
 

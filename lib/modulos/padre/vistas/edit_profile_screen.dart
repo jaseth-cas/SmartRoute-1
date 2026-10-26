@@ -11,6 +11,8 @@ import '../../../nucleo/widgets/responsive_layout.dart';
 import '../../../nucleo/utilidades/validators.dart';
 import '../../autenticacion/datos/session_manager.dart';
 
+import '../../../nucleo/servicios/supabase_client.dart';
+
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
@@ -42,15 +44,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  void _saveProfile() {
+  Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Perfil de tutor actualizado con éxito.'),
-          backgroundColor: SmartColors.deepBlue,
-        ),
-      );
-      context.pop();
+      _formKey.currentState!.save();
+      
+      final currentUserId = SupabaseConfig.client.auth.currentUser?.id;
+      if (currentUserId != null) {
+        try {
+          await SupabaseConfig.client.from('perfiles').update({
+            'nombre': _nameController.text.trim(),
+            'telefono': _phoneController.text.trim(),
+          }).eq('id', currentUserId);
+        } catch (e) {
+          debugPrint('Aviso actualizando perfil en Supabase: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Perfil de tutor actualizado con éxito.'),
+            backgroundColor: SmartColors.deepBlue,
+          ),
+        );
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/student_profile');
+        }
+      }
     }
   }
 

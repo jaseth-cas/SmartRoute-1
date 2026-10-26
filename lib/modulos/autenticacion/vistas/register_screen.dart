@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,22 +19,82 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final AuthService _authService = AuthService();
   
   String _name = '';
   String _email = '';
+  String _phone = '';
   String _password = '';
+  String _confirmPassword = '';
   UserRole _selectedRole = UserRole.student;
+  bool _isLoading = false;
 
-  void _register() {
-    if (_formKey.currentState!.validate() && _password.isNotEmpty) {
-      _formKey.currentState!.save();
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_password.trim().isEmpty) return;
+
+    if (_password != _confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Las contraseñas no coinciden. Por favor verifícalas.'),
+          backgroundColor: SmartColors.smartRed,
+        ),
+      );
+      return;
+    }
+
+    _formKey.currentState!.save();
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await _authService.signUp(
+        email: _email.trim(),
+        password: _password.trim(),
+        nombre: _name.trim(),
+        rol: _selectedRole,
+        telefono: _phone.trim().isNotEmpty ? _phone.trim() : null,
+      );
+
+      if (!mounted) return;
+
+      if (response.user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '¡Credenciales creadas para ${_selectedRole.displayName}! Ya puedes iniciar sesión.',
+            ),
+            backgroundColor: SmartColors.smartGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        context.pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo completar el registro. Verifica los datos e intenta de nuevo.'),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Aviso Supabase register: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Cuenta creada para ${_name.isNotEmpty ? _name : _email}. Inicia sesión.'),
+          content: Text('Aviso Supabase: $e. Registrando en modo demo local.'),
           backgroundColor: SmartColors.deepBlue,
+          duration: const Duration(seconds: 3),
         ),
       );
       context.pop();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -168,6 +230,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onChanged: (val) => _email = val,
                     ),
                     const SizedBox(height: 16),
+
+                    CustomTextField(
+                      label: 'Teléfono / Móvil (opcional)',
+                      hint: '+57 300 123 4567',
+                      prefixIcon: Icons.phone_android_rounded,
+                      keyboardType: TextInputType.phone,
+                      onChanged: (val) => _phone = val,
+                    ),
+                    const SizedBox(height: 16),
                     
                     CustomTextField(
                       label: 'Contraseña de Seguridad',
@@ -177,11 +248,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: Validators.validatePassword,
                       onChanged: (val) => _password = val,
                     ),
+                    const SizedBox(height: 16),
+
+                    CustomTextField(
+                      label: 'Confirmar Contraseña',
+                      hint: 'Repite tu contraseña',
+                      prefixIcon: Icons.lock_outline_rounded,
+                      isPassword: true,
+                      validator: (val) {
+                        if (val == null || val.isEmpty) return 'Confirma tu contraseña';
+                        if (val != _password) return 'Las contraseñas no coinciden';
+                        return null;
+                      },
+                      onChanged: (val) => _confirmPassword = val,
+                    ),
                     const SizedBox(height: 32),
 
                     PrimaryButton(
-                      text: 'COMPLETAR REGISTRO',
-                      icon: Icons.check_circle_outline_rounded,
+                      text: _isLoading ? 'CREANDO REGISTRO...' : 'COMPLETAR REGISTRO',
+                      icon: _isLoading ? Icons.hourglass_top_rounded : Icons.check_circle_outline_rounded,
+                      enabled: !_isLoading,
                       onPressed: _register,
                     ),
                   ],

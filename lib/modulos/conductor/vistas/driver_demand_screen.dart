@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/facial_boarding_dialog.dart';
@@ -20,29 +25,120 @@ class DriverDemandScreen extends StatefulWidget {
 
 class _DriverDemandScreenState extends State<DriverDemandScreen> {
   String _selectedFilter = 'Todos';
+  BusMock? _bus;
+  List<StudentPassengerMock> _allPassengers = [];
+  bool _isLoading = true;
+  StreamSubscription? _attendanceSub;
 
-  void _refreshList() {
-    setState(() {});
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadManifest();
+      _subscribeToRealtimeAttendance();
+    });
+  }
+
+  @override
+  void dispose() {
+    _attendanceSub?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToRealtimeAttendance() {
+    try {
+      final attendanceService = context.read<AttendanceService>();
+      _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
+        _loadManifest(silent: true);
+      });
+    } catch (e) {
+      debugPrint('Aviso en suscripción de asistencia: $e');
+    }
+  }
+
+  Future<void> _loadManifest({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final busService = context.read<BusService>();
+      final studentService = context.read<StudentService>();
+
+      final bus = await busService.getBusByCode('BUS-01') ?? (await busService.getAllBuses()).first;
+      final passengers = await studentService.getStudentsByBus(bus.code);
+
+      if (mounted) {
+        setState(() {
+          _bus = bus;
+          _allPassengers = passengers;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando manifiesto de conductor: $e');
+      if (mounted && !silent) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _openFacialScanner([StudentPassengerMock? student]) {
     FacialBoardingDialog.show(
       context,
       targetStudent: student,
-      onBoardingCompleted: _refreshList,
+      onBoardingCompleted: () => _loadManifest(silent: true),
     );
+  }
+
+  Future<void> _manualCheckIn(StudentPassengerMock student) async {
+    try {
+      final attendanceService = context.read<AttendanceService>();
+      await attendanceService.checkInPassenger(
+        studentId: student.id,
+        method: 'Manual',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Abordaje manual registrado para ${student.name}'),
+            backgroundColor: SmartColors.smartBlue,
+          ),
+        );
+        _loadManifest(silent: true);
+      }
+    } catch (e) {
+      debugPrint('Error en check-in manual: $e');
+    }
+  }
+
+  Future<void> _checkOut(StudentPassengerMock student) async {
+    try {
+      final attendanceService = context.read<AttendanceService>();
+      await attendanceService.checkOutPassenger(studentId: student.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${student.name} entregado en el colegio'),
+            backgroundColor: SmartColors.smartGreen,
+          ),
+        );
+        _loadManifest(silent: true);
+      }
+    } catch (e) {
+      debugPrint('Error en check-out: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final allPassengers = MockData.getPassengersByBus('BUS-01');
+    final bus = _bus ?? MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
+    final waitingCount = _allPassengers.where((p) => p.status == PassengerStatus.waiting).length;
+    final onboardCount = _allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final absentCount = _allPassengers.where((p) => p.status == PassengerStatus.absent).length;
+    final absentStudents = _allPassengers.where((p) => p.status == PassengerStatus.absent).toList();
 
-    final waitingCount = allPassengers.where((p) => p.status == PassengerStatus.waiting).length;
-    final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
-    final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
-
-    final filteredPassengers = allPassengers.where((p) {
+    final filteredPassengers = _allPassengers.where((p) {
       if (_selectedFilter == 'A bordo') return p.status == PassengerStatus.onboard;
       if (_selectedFilter == 'En espera') return p.status == PassengerStatus.waiting;
       if (_selectedFilter == 'Ausentes') return p.status == PassengerStatus.absent;
@@ -68,6 +164,18 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
         backgroundColor: SmartColors.neuBackground,
         elevation: 0,
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6.0),
+            child: NeumorphicBox(
+              padding: EdgeInsets.zero,
+              isPill: true,
+              child: IconButton(
+                tooltip: 'Recargar manifiesto',
+                icon: const Icon(Icons.refresh_rounded, color: SmartColors.deepBlue, size: 20),
+                onPressed: () => _loadManifest(),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 14.0),
             child: NeumorphicBox(
@@ -239,10 +347,8 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
                         return _StudentManifestCard(
                           student: student,
                           onScanFacial: () => _openFacialScanner(student),
-                          onCheckOut: () {
-                            MockData.checkOutPassenger(student.id);
-                            _refreshList();
-                          },
+                          onManualCheckIn: () => _manualCheckIn(student),
+                          onCheckOut: () => _checkOut(student),
                         );
                       },
                     );
@@ -256,10 +362,8 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
                         return _StudentManifestCard(
                           student: student,
                           onScanFacial: () => _openFacialScanner(student),
-                          onCheckOut: () {
-                            MockData.checkOutPassenger(student.id);
-                            _refreshList();
-                          },
+                          onManualCheckIn: () => _manualCheckIn(student),
+                          onCheckOut: () => _checkOut(student),
                         );
                       },
                     );
@@ -326,11 +430,13 @@ class _MiniCounter extends StatelessWidget {
 class _StudentManifestCard extends StatelessWidget {
   final StudentPassengerMock student;
   final VoidCallback onScanFacial;
+  final VoidCallback onManualCheckIn;
   final VoidCallback onCheckOut;
 
   const _StudentManifestCard({
     required this.student,
     required this.onScanFacial,
+    required this.onManualCheckIn,
     required this.onCheckOut,
   });
 
@@ -433,7 +539,7 @@ class _StudentManifestCard extends StatelessWidget {
             const SizedBox(height: 14),
             Row(
               children: [
-                if (!isOnboard && !isDelivered)
+                if (!isOnboard && !isDelivered) ...[
                   Expanded(
                     child: GestureDetector(
                       onTap: onScanFacial,
@@ -470,6 +576,17 @@ class _StudentManifestCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Check-in Manual (RF-10)',
+                    icon: const Icon(Icons.touch_app, color: SmartColors.smartBlue),
+                    style: IconButton.styleFrom(
+                      backgroundColor: SmartColors.smartLightBlue,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: onManualCheckIn,
+                  ),
+                ],
                 if (isOnboard)
                   Expanded(
                     child: GestureDetector(

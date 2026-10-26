@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
@@ -23,11 +27,116 @@ class DriverHomeScreen extends StatefulWidget {
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   String routeStatus = "En recorrido";
   bool gpsActive = true;
+  bool _isLoading = true;
+
+  BusMock? _bus;
+  List<StudentPassengerMock> _passengers = [];
+  StreamSubscription? _attendanceSub;
+  Timer? _gpsTimer;
+
+  // Coordenadas base para la simulación de telemetría GPS
+  double _currentLat = 9.9333;
+  double _currentLng = -84.0772;
+  int _telemetryStep = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDriverData();
+      _setupRealtimeSubscription();
+      _startGpsSimulation();
+    });
+  }
+
+  @override
+  void dispose() {
+    _attendanceSub?.cancel();
+    _gpsTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadDriverData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final busService = context.read<BusService>();
+      final studentService = context.read<StudentService>();
+
+      final bus = await busService.getBusByCode('BUS-01') ??
+          MockData.getBusByCode('BUS-01') ??
+          MockData.buses.first;
+
+      final students = await studentService.getStudentsByBus(bus.code);
+
+      if (mounted) {
+        setState(() {
+          _bus = bus;
+          _passengers = students;
+          _currentLat = bus.latitude ?? 9.9333;
+          _currentLng = bus.longitude ?? -84.0772;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando datos del conductor: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    final attendanceService = context.read<AttendanceService>();
+    _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
+      if (mounted) {
+        _loadDriverData(silent: true);
+      }
+    });
+  }
+
+  void _startGpsSimulation() {
+    _gpsTimer?.cancel();
+    _gpsTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
+      if (!gpsActive || _bus == null || !mounted) return;
+
+      // Generar pequeño desplazamiento realista por la ruta escolar
+      _telemetryStep++;
+      final latDelta = (_telemetryStep % 2 == 0 ? 0.0003 : -0.0002);
+      final lngDelta = (_telemetryStep % 3 == 0 ? 0.0004 : -0.0001);
+
+      _currentLat += latDelta;
+      _currentLng += lngDelta;
+
+      final busService = context.read<BusService>();
+      busService.updateBusLocation(
+        busCode: _bus!.code,
+        latitude: _currentLat,
+        longitude: _currentLng,
+        speedKmH: 28 + (_telemetryStep % 12),
+      );
+    });
+  }
+
+  void _toggleGps() {
+    setState(() {
+      gpsActive = !gpsActive;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(gpsActive ? 'Transmisión GPS activada' : 'Transmisión GPS pausada'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: gpsActive ? SmartColors.smartGreen : SmartColors.smartRed,
+      ),
+    );
+  }
 
   void _openFacialScanner() {
     context.push('/facial_checkin').then((_) {
       if (mounted) {
-        setState(() {});
+        _loadDriverData(silent: true);
       }
     });
   }
@@ -36,10 +145,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final allPassengers = MockData.getPassengersByBus('BUS-01');
-    final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
-    final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
+    final bus = _bus ?? MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
+    final passengers = _passengers.isNotEmpty ? _passengers : MockData.getPassengersByBus(bus.code);
+    final onboardCount = passengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final absentCount = passengers.where((p) => p.status == PassengerStatus.absent).length;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,

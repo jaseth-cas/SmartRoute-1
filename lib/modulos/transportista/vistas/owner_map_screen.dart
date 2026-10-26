@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -7,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
@@ -19,8 +21,10 @@ class OwnerMapScreen extends StatefulWidget {
 
 class _OwnerMapScreenState extends State<OwnerMapScreen> {
   final MapController _mapController = MapController();
-  final List<BusMock> buses = MockData.buses;
+  List<BusMock> buses = MockData.buses;
+  StreamSubscription<List<BusMock>>? _busSubscription;
 
+  // Coordenadas para animación suave de las unidades en trayecto escolar
   final List<LatLng> _bus1Route = const [
     LatLng(9.9322, -84.0795),
     LatLng(9.9335, -84.0792),
@@ -47,12 +51,54 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
   int _bus2Index = 0;
   Timer? _gpsTimer;
   BusMock? _selectedBus;
+  bool _isRealtimeActive = false;
 
   @override
   void initState() {
     super.initState();
     _selectedBus = buses.isNotEmpty ? buses.first : null;
     _startGpsSimulation();
+
+    // Conectar con la base de datos real en cuanto se monte el contexto
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initBusService();
+    });
+  }
+
+  Future<void> _initBusService() async {
+    try {
+      final busService = context.read<BusService>();
+      final realBuses = await busService.getAllBuses();
+      if (mounted && realBuses.isNotEmpty) {
+        setState(() {
+          buses = realBuses;
+          _selectedBus = buses.first;
+        });
+      }
+
+      // Suscripción al canal WebSocket en tiempo real de Supabase
+      _busSubscription = busService.streamAllBuses().listen(
+        (updatedBuses) {
+          if (mounted && updatedBuses.isNotEmpty) {
+            setState(() {
+              buses = updatedBuses;
+              _isRealtimeActive = true;
+              if (_selectedBus != null) {
+                _selectedBus = buses.firstWhere(
+                  (b) => b.code == _selectedBus!.code,
+                  orElse: () => buses.first,
+                );
+              }
+            });
+          }
+        },
+        onError: (err) {
+          debugPrint('Aviso Stream Realtime: $err');
+        },
+      );
+    } catch (e) {
+      debugPrint('Error inicializando buses en mapa: $e');
+    }
   }
 
   void _startGpsSimulation() {
@@ -69,6 +115,7 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
   @override
   void dispose() {
     _gpsTimer?.cancel();
+    _busSubscription?.cancel();
     super.dispose();
   }
 
@@ -120,33 +167,30 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                   ),
                   MarkerLayer(
                     markers: [
-                      // Bus 1
-                      Marker(
-                        point: bus1Pos,
-                        width: 74,
-                        height: 74,
-                        child: GestureDetector(
-                          onTap: () => _centerOnBus(bus1Pos, buses[0]),
-                          child: _BusGpsMarker(
-                            code: buses.isNotEmpty ? buses[0].code : 'BUS-01',
-                            isSelected: _selectedBus?.code == buses[0].code,
-                          ),
-                        ),
-                      ),
-                      // Bus 2
-                      if (buses.length > 1)
-                        Marker(
-                          point: bus2Pos,
-                          width: 74,
-                          height: 74,
-                          child: GestureDetector(
-                            onTap: () => _centerOnBus(bus2Pos, buses[1]),
-                            child: _BusGpsMarker(
-                              code: buses[1].code,
-                              isSelected: _selectedBus?.code == buses[1].code,
+                      for (int i = 0; i < buses.length; i++) ...[
+                        () {
+                          final bus = buses[i];
+                          final pos = i == 0
+                              ? bus1Pos
+                              : (i == 1
+                                  ? bus2Pos
+                                  : LatLng(bus.latitude ?? (9.9340 + (0.0015 * i)), bus.longitude ?? (-84.0780 + (0.0015 * i))));
+                          final isSelected = _selectedBus?.code == bus.code;
+
+                          return Marker(
+                            point: pos,
+                            width: 74,
+                            height: 74,
+                            child: GestureDetector(
+                              onTap: () => _centerOnBus(pos, bus),
+                              child: _BusGpsMarker(
+                                code: bus.code,
+                                isSelected: isSelected,
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        }(),
+                      ],
                     ],
                   ),
                 ],
@@ -238,7 +282,12 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                           isPill: true,
                           isDark: _selectedBus?.code == buses[i].code,
                           onTap: () {
-                            final targetPos = i == 0 ? bus1Pos : bus2Pos;
+                            final targetPos = i == 0
+                                ? bus1Pos
+                                : (i == 1
+                                    ? bus2Pos
+                                    : LatLng(buses[i].latitude ?? (9.9340 + (0.0015 * i)),
+                                        buses[i].longitude ?? (-84.0780 + (0.0015 * i))));
                             _centerOnBus(targetPos, buses[i]);
                           },
                           padding: const EdgeInsets.symmetric(

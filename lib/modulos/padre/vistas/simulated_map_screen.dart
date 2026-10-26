@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
@@ -27,10 +30,11 @@ class SimulatedMapScreen extends StatefulWidget {
 }
 
 class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
+  String lastUpdate = "Conectando GPS...";
+  bool isUpdating = false;
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
-  bool isUpdating = false;
   String _activeTab = 'Tracking'; // 'Tracking', 'Analytics', 'Detalles'
 
   // Ruta 1: Desde la Casa del Estudiante hasta la Parada de Recogida (Ruta de acceso en Vía Cristo Rey)
@@ -55,6 +59,9 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     LatLng(8.5154, -80.3482), // Colegio San José (Destino)
   ];
 
+  BusMock? _liveBus;
+  StreamSubscription? _busSub;
+
   int currentPointIndex = 0;
   Timer? loopTimer;
   double _currentZoom = 15.2;
@@ -63,10 +70,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   void initState() {
     super.initState();
     _determinePosition();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeToLiveBus();
+    });
 
-    // Loop de movimiento de autobús colegial cada 2.5 seg
+    // Loop de movimiento de autobús colegial cada 2.5 seg si no hay GPS en vivo
     loopTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
-      if (!isUpdating && mounted) {
+      if (!isUpdating && mounted && _liveBus == null) {
         setState(() {
           currentPointIndex = (currentPointIndex + 1) % schoolBusPath.length;
         });
@@ -74,8 +84,30 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     });
   }
 
+  void _subscribeToLiveBus() {
+    try {
+      final busService = context.read<BusService>();
+      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+
+      _busSub = busService.streamBusByCode(busCode).listen((bus) {
+        if (bus != null && mounted) {
+          setState(() {
+            _liveBus = bus;
+            lastUpdate = "GPS en vivo (Satelital)";
+          });
+          if (bus.latitude != null && bus.longitude != null) {
+            _mapController.move(LatLng(bus.latitude!, bus.longitude!), _mapController.camera.zoom);
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Aviso suscribiendo a bus en vivo: $e');
+    }
+  }
+
   @override
   void dispose() {
+    _busSub?.cancel();
     loopTimer?.cancel();
     super.dispose();
   }
@@ -117,6 +149,22 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
   void _syncData() async {
     setState(() => isUpdating = true);
+    try {
+      final busService = context.read<BusService>();
+      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+      final bus = await busService.getBusByCode(busCode);
+      if (bus != null && mounted) {
+        setState(() {
+          _liveBus = bus;
+          lastUpdate = "Actualizado ahora";
+        });
+        if (bus.latitude != null && bus.longitude != null) {
+          _mapController.move(LatLng(bus.latitude!, bus.longitude!), 15.5);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sincronizando bus: $e');
+    }
     await _determinePosition();
     await Future.delayed(const Duration(milliseconds: 400));
     if (mounted) {
@@ -139,7 +187,9 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   }
 
   void _centerOnBus() {
-    final busPos = schoolBusPath[currentPointIndex];
+    final LatLng busPos = (_liveBus?.latitude != null && _liveBus?.longitude != null)
+        ? LatLng(_liveBus!.latitude!, _liveBus!.longitude!)
+        : schoolBusPath[currentPointIndex];
     _mapController.move(busPos, 16.2);
   }
 
@@ -287,7 +337,9 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
   // Mapa Interactivo con Rutas en Vivo Conectadas (Casa de Estudiante -> Parada -> Escuela)
   Widget _buildMapView(dynamic bus) {
-    final busPos = schoolBusPath[currentPointIndex];
+    final LatLng busPos = (_liveBus?.latitude != null && _liveBus?.longitude != null)
+        ? LatLng(_liveBus!.latitude!, _liveBus!.longitude!)
+        : schoolBusPath[currentPointIndex];
 
     return FlutterMap(
       mapController: _mapController,
@@ -379,8 +431,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
               width: 84,
               height: 84,
               child: _buildBusMarker(
-                code: bus?.code ?? "BUS-01",
-                label: "42 km/h",
+                code: _liveBus?.code ?? bus?.code ?? "BUS-01",
+                label: _liveBus?.currentSpeedKmH != null ? "${_liveBus!.currentSpeedKmH} km/h" : "42 km/h",
                 isActive: true,
               ),
             ),

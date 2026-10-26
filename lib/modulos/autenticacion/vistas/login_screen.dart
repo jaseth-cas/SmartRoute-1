@@ -10,6 +10,7 @@ import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -22,10 +23,12 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailController = TextEditingController(text: 'carlos.gomez@smartroute.com');
-  final TextEditingController _passwordController = TextEditingController(text: '123456');
-  bool passwordVisible = false;
+  final AuthService _authService = AuthService();
+  final TextEditingController _emailController = TextEditingController(text: 'padre@smartroute.com');
+  final TextEditingController _passwordController = TextEditingController(text: 'Password123!');
   UserRole selectedRole = UserRole.student;
+  bool passwordVisible = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -39,13 +42,16 @@ class _LoginScreenState extends State<LoginScreen> {
       selectedRole = role;
       switch (role) {
         case UserRole.student:
-          _emailController.text = 'carlos.gomez@smartroute.com';
+          _emailController.text = 'padre@smartroute.com';
+          _passwordController.text = 'Password123!';
           break;
         case UserRole.driver:
-          _emailController.text = 'juan.conductor@smartroute.com';
+          _emailController.text = 'conductor@smartroute.com';
+          _passwordController.text = 'Password123!';
           break;
         case UserRole.owner:
-          _emailController.text = 'transportes.gomez@smartroute.com';
+          _emailController.text = 'dueno@smartroute.com';
+          _passwordController.text = 'Password123!';
           break;
       }
     });
@@ -473,11 +479,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // Botón Único de Ingreso
           PrimaryButton(
-            text: 'INGRESAR AL SISTEMA',
-            icon: Icons.login_rounded,
+            text: _isLoading ? 'INGRESANDO...' : 'INGRESAR AL SISTEMA',
+            icon: _isLoading ? Icons.hourglass_top_rounded : Icons.login_rounded,
+            enabled: !_isLoading,
             onPressed: () {
               if (_formKey.currentState!.validate()) {
-                _enterRole(selectedRole);
+                _handleLogin();
               }
             },
           ),
@@ -520,6 +527,89 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Chofer de Ruta Escolar';
       case UserRole.owner:
         return 'Dueño de Flota Escolar';
+    }
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    try {
+      // 1. Iniciar sesión real en el servidor Supabase (Docker)
+      final response = await _authService.signIn(
+        email: email,
+        password: password,
+      );
+
+      final user = response.user;
+      final session = response.session;
+
+      if (!mounted) return;
+
+      if (user != null && session != null) {
+        // Consultar el perfil y rol registrado en PostgreSQL
+        final profile = await _authService.fetchUserProfile(user.id);
+        if (!mounted) return;
+
+        final String nombre = profile?['nombre'] ??
+            user.userMetadata?['nombre'] ??
+            (email.contains('@') ? email.split('@')[0] : email);
+
+        final String rolStr = profile?['rol'] ??
+            user.userMetadata?['rol'] ??
+            selectedRole.name;
+
+        final UserRole matchedRole = UserRole.values.firstWhere(
+          (r) => r.name == rolStr,
+          orElse: () => selectedRole,
+        );
+
+        context.read<SessionManager>().loginWithSupabase(
+              userId: user.id,
+              name: nombre,
+              email: user.email ?? email,
+              role: matchedRole,
+              token: session.accessToken,
+            );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sesión iniciada: $nombre (${matchedRole.displayName})'),
+            backgroundColor: SmartColors.smartGreen,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        widget.onLoginSuccess();
+        return;
+      }
+    } catch (e) {
+      debugPrint('Aviso Supabase login: $e');
+      if (!mounted) return;
+
+      final errorMsg = e.toString().replaceAll('AuthException', '').replaceAll(':', '').trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Supabase offline o credenciales no encontradas: $errorMsg'),
+          backgroundColor: SmartColors.smartRed,
+          action: SnackBarAction(
+            label: 'Acceso Demo',
+            textColor: Colors.white,
+            onPressed: () => _enterRole(selectedRole),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 }

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/neumorphic_box.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/responsive_layout.dart';
+import '../../../nucleo/servicios/bus_service.dart';
 
 class RegisterBusScreen extends StatefulWidget {
   const RegisterBusScreen({super.key});
@@ -22,6 +24,8 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
   String plate = "";
   String model = "";
   int capacity = 24;
+  String school = "Colegio San José";
+  bool _isLoading = false;
 
   final TextEditingController _capacityController = TextEditingController(text: "24");
 
@@ -31,37 +35,69 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
     super.dispose();
   }
 
-  void _saveBus() {
+  Future<void> _saveBus() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: SmartColors.deepBlack,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              Icon(Icons.check_circle_rounded,
-                  color: SmartColors.electricCyan, size: 20),
-              const SizedBox(width: 12),
-              Text(
-                'Autobús registrado correctamente en la flota',
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+      setState(() => _isLoading = true);
+
+      try {
+        final busService = context.read<BusService>();
+        final newBus = await busService.registerBus(
+          code: code,
+          plate: plate,
+          model: model,
+          capacity: capacity,
+          schoolName: school.isNotEmpty ? school : 'Colegio San José',
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: SmartColors.deepBlack,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: SmartColors.electricCyan, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Autobús ${newBus.code} registrado correctamente en PostgreSQL',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
-      if (context.canPop()) {
-        context.pop();
-      } else {
-        context.go('/owner_home');
+        );
+
+        if (context.canPop()) {
+          context.pop(true);
+        } else {
+          context.go('/owner_home');
+        }
+      } catch (e) {
+        if (!mounted) return;
+        final errorMsg = e.toString().contains('23505') || e.toString().contains('unique')
+            ? 'Ya existe una unidad con ese código o placa en el sistema.'
+            : 'Error al registrar unidad: $e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -303,9 +339,10 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
 
                 // Botón Guardar Cápsula Quivox
                 PrimaryButton(
-                  text: 'REGISTRAR AUTOBÚS EN FLOTA',
-                  icon: Icons.check_circle_outline_rounded,
+                  text: _isLoading ? 'REGISTRANDO EN BASE DE DATOS...' : 'REGISTRAR AUTOBÚS EN FLOTA',
+                  icon: _isLoading ? null : Icons.check_circle_outline_rounded,
                   isDark: true,
+                  enabled: !_isLoading,
                   onPressed: _saveBus,
                 ),
                 const SizedBox(height: 40),
@@ -315,6 +352,6 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
         ),
       ),
     ),
-    );
-  }
+  );
+}
 }

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../../nucleo/tema/colors.dart';
+import '../../../nucleo/datos/mock_data.dart';
+import '../../../nucleo/modelos/models.dart';
 import '../../../nucleo/widgets/neumorphic_box.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
-import '../../../nucleo/datos/mock_data.dart';
-import '../../../nucleo/modelos/models.dart';
+import '../../../nucleo/servicios/incident_service.dart';
 import '../../../nucleo/widgets/driver_bottom_bar.dart';
 import '../../../nucleo/widgets/responsive_layout.dart';
 
@@ -24,6 +26,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   String title = "";
   String description = "";
   String incidentType = "Mecánico";
+  bool _isLoading = false;
 
   final List<String> incidentTypes = [
     "Mecánico",
@@ -33,9 +36,10 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     "Otro"
   ];
 
-  void _submitReport() async {
+  Future<void> _submitReport() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+      setState(() => _isLoading = true);
 
       final newNotification = NotificationMock(
         id: DateTime.now().millisecondsSinceEpoch,
@@ -50,7 +54,16 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
       await MockData.addNotification(newNotification);
 
-      if (mounted) {
+      try {
+        final incidentService = context.read<IncidentService>();
+        await incidentService.reportIncident(
+          busCode: 'BUS-01',
+          title: title,
+          description: description,
+          incidentType: incidentType,
+        );
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: SmartColors.deepBlack,
@@ -63,19 +76,37 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 const Icon(Icons.check_circle_rounded,
                     color: SmartColors.electricCyan, size: 20),
                 const SizedBox(width: 12),
-                Text(
-                  'Incidente reportado exitosamente',
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                Expanded(
+                  child: Text(
+                    'Incidente registrado y notificado en tiempo real a los padres',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         );
-        context.pop();
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/driver_home');
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al reportar incidente: $e'),
+            backgroundColor: SmartColors.smartRed,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -301,9 +332,10 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
                 // Botón Quivox Cápsula Crimson
                 PrimaryButton(
-                  text: 'ENVIAR REPORTE CRÍTICO',
-                  icon: Icons.send_rounded,
+                  text: _isLoading ? 'ENVIANDO ALERTA...' : 'ENVIAR REPORTE CRÍTICO',
+                  icon: _isLoading ? Icons.hourglass_top_rounded : Icons.send_rounded,
                   isCrimson: true,
+                  enabled: !_isLoading,
                   onPressed: _submitReport,
                 ),
                 const SizedBox(height: 40),
@@ -313,6 +345,6 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         ),
       ),
     ),
-    );
-  }
+  );
+}
 }
