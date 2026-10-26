@@ -153,13 +153,14 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       ),
       appBar: AppBar(
         title: Text(
-          'MANIFIESTO // PASAJEROS ESCOLARES',
+          'MANIFIESTO // PASAJEROS',
           style: GoogleFonts.jetBrainsMono(
-            fontSize: 12,
+            fontSize: 11.5,
             fontWeight: FontWeight.w700,
-            letterSpacing: 1.0,
+            letterSpacing: 0.8,
             color: SmartColors.deepBlack,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: SmartColors.neuBackground,
         elevation: 0,

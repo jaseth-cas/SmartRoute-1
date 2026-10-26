@@ -72,7 +72,7 @@ class RouteCard extends StatelessWidget {
                               color: SmartColors.deepBlack,
                               letterSpacing: -0.2,
                             ),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),

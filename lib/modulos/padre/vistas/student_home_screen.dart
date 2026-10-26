@@ -229,71 +229,78 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           title: Row(
             children: [
               NeumorphicBox(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 borderRadius: BorderRadius.circular(10),
                 padding: const EdgeInsets.all(4),
                 child: Image.asset('assets/images/logo2.png', fit: BoxFit.contain),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'SmartRoute',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                      color: SmartColors.deepBlack,
-                      letterSpacing: -0.3,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'SmartRoute',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: SmartColors.deepBlack,
+                        letterSpacing: -0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  Text(
-                    'PORTAL FAMILIA // EN VIVO',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 9.5,
-                      color: SmartColors.deepBlue,
-                      letterSpacing: 0.8,
+                    Text(
+                      'PORTAL FAMILIA',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 9,
+                        color: SmartColors.deepBlue,
+                        letterSpacing: 0.6,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
           actions: [
             Padding(
-              padding: const EdgeInsets.only(right: 6.0),
+              padding: const EdgeInsets.only(right: 4.0),
               child: NeumorphicBox(
                 padding: EdgeInsets.zero,
                 isPill: true,
                 child: IconButton(
                   tooltip: 'Actualizar datos',
-                  icon: const Icon(Icons.refresh_rounded, color: SmartColors.deepBlue, size: 20),
+                  icon: const Icon(Icons.refresh_rounded, color: SmartColors.deepBlue, size: 18),
                   onPressed: () => _loadStudentData(),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(right: 6.0),
+              padding: const EdgeInsets.only(right: 4.0),
               child: NeumorphicBox(
                 padding: EdgeInsets.zero,
                 isPill: true,
                 child: IconButton(
-                  icon: const Icon(Icons.person_outline_rounded, color: SmartColors.deepBlue, size: 20),
+                  icon: const Icon(Icons.person_outline_rounded, color: SmartColors.deepBlue, size: 18),
                   onPressed: () => context.push('/student_profile'),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(right: 14.0),
+              padding: const EdgeInsets.only(right: 12.0),
               child: NeumorphicBox(
                 padding: EdgeInsets.zero,
                 isPill: true,
                 child: IconButton(
                   icon: const Badge(
                     backgroundColor: SmartColors.primaryCrimson,
-                    child: Icon(Icons.notifications_none_rounded, color: SmartColors.deepBlack, size: 20),
+                    child: Icon(Icons.notifications_none_rounded, color: SmartColors.deepBlack, size: 18),
                   ),
                   onPressed: () => context.go('/notifications'),
                 ),

@@ -92,10 +92,16 @@ class AttendanceService {
 
   /// Stream en tiempo real de todos los eventos de asistencia del día (WebSockets)
   Stream<List<Map<String, dynamic>>> streamTodayAttendance() {
+    if (SupabaseConfig.hasCheckedReachability && !SupabaseConfig.isReachable) {
+      return const Stream.empty();
+    }
     return _supabase
         .from('asistencia_diaria')
         .stream(primaryKey: ['id'])
-        .eq('fecha', _todayDate);
+        .eq('fecha', _todayDate)
+        .handleError((e) {
+          debugPrint('Aviso stream asistencia: $e');
+        });
   }
 
   /// Obtiene los registros de asistencia del día actual para una lista de estudiantes
@@ -109,7 +115,8 @@ class AttendanceService {
           .from('asistencia_diaria')
           .select()
           .filter('estudiante_id', 'in', studentIds)
-          .eq('fecha', _todayDate);
+          .eq('fecha', _todayDate)
+          .timeout(SupabaseConfig.defaultTimeout);
 
       final map = <int, Map<String, dynamic>>{};
       for (final row in (response as List)) {
@@ -120,7 +127,7 @@ class AttendanceService {
       }
       return map;
     } catch (e) {
-      debugPrint('Error en getTodayAttendanceForStudents: $e');
+      debugPrint('Aviso getTodayAttendanceForStudents (usando fallback local): $e');
       return {};
     }
   }

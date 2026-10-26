@@ -98,13 +98,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         backgroundColor: SmartColors.neuBackground,
         appBar: AppBar(
           title: Text(
-            'ALERTAS // BANDEJA DE ENTRADA',
+            'ALERTAS // BANDEJA',
             style: GoogleFonts.jetBrainsMono(
-              fontSize: 12,
+              fontSize: 11.5,
               fontWeight: FontWeight.w700,
-              letterSpacing: 1.0,
+              letterSpacing: 0.8,
               color: SmartColors.deepBlack,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
           backgroundColor: SmartColors.neuBackground,
           elevation: 0,
@@ -172,27 +173,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'CANAL DE ALERTAS PUSH',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12.5,
-                                      letterSpacing: 0.5,
-                                      color: SmartColors.deepBlack,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'CANAL DE ALERTAS PUSH',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                        letterSpacing: 0.5,
+                                        color: SmartColors.deepBlack,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    notificationsEnabled ? 'Recibiendo eventos en vivo (PostgreSQL Realtime)' : 'Canal en pausa',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11.5,
-                                      color: SmartColors.smartGray,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      notificationsEnabled ? 'Recibiendo eventos en vivo (PostgreSQL Realtime)' : 'Canal en pausa',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11.5,
+                                        color: SmartColors.smartGray,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Switch(
                                 value: notificationsEnabled,
                                 onChanged: (value) => setState(() => notificationsEnabled = value),

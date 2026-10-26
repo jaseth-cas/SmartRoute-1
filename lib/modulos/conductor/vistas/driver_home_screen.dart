@@ -154,13 +154,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       backgroundColor: SmartColors.neuBackground,
       appBar: AppBar(
         title: Text(
-          'CABINA CONDUCIDA // TELEMETRÍA',
+          'CABINA // TELEMETRÍA',
           style: GoogleFonts.jetBrainsMono(
-            fontSize: 12,
+            fontSize: 11.5,
             fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
+            letterSpacing: 0.8,
             color: SmartColors.deepBlack,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: SmartColors.neuBackground,
         elevation: 0,

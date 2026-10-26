@@ -16,10 +16,11 @@ class StudentService {
           .from('estudiantes_pasajeros')
           .select()
           .eq('autobus_codigo', busCode)
-          .order('orden', ascending: true);
+          .order('orden', ascending: true)
+          .timeout(SupabaseConfig.defaultTimeout);
 
       final studentsList = studentsResponse as List;
-      if (studentsList.isEmpty) return [];
+      if (studentsList.isEmpty) return MockData.passengers;
 
       // 2. Consultar asistencias del día actual para estos estudiantes
       final studentIds = studentsList.map((s) => s['id']).toList();
@@ -29,7 +30,8 @@ class StudentService {
           .from('asistencia_diaria')
           .select()
           .filter('estudiante_id', 'in', studentIds)
-          .eq('fecha', todayStr);
+          .eq('fecha', todayStr)
+          .timeout(SupabaseConfig.defaultTimeout);
 
       final attendanceMap = <int, Map<String, dynamic>>{};
       for (final att in (attendanceResponse as List)) {
@@ -48,8 +50,8 @@ class StudentService {
         return StudentPassengerMock.fromMap(row as Map<String, dynamic>, att);
       }).toList();
     } catch (e) {
-      debugPrint('Error en getStudentsByBus: $e');
-      return [];
+      debugPrint('Aviso getStudentsByBus (usando fallback local): $e');
+      return MockData.passengers;
     }
   }
 
@@ -112,7 +114,8 @@ class StudentService {
       final response = await _supabase
           .from('estudiantes_pasajeros')
           .select()
-          .order('orden', ascending: true);
+          .order('orden', ascending: true)
+          .timeout(SupabaseConfig.defaultTimeout);
 
       final list = (response as List).map((row) {
         return StudentPassengerMock.fromMap(row as Map<String, dynamic>);
@@ -121,7 +124,7 @@ class StudentService {
       if (list.isNotEmpty) return list;
       return MockData.passengers;
     } catch (e) {
-      debugPrint('Error en getAllStudents: $e');
+      debugPrint('Aviso getAllStudents (usando fallback local): $e');
       return MockData.passengers;
     }
   }
@@ -134,7 +137,7 @@ class StudentService {
       if (ownerId != null) {
         busesQuery = busesQuery.eq('dueno_id', ownerId);
       }
-      final busesData = await busesQuery;
+      final busesData = await busesQuery.timeout(SupabaseConfig.defaultTimeout);
 
       int totalSeats = 0;
       int occupiedSeats = 0;
@@ -146,7 +149,8 @@ class StudentService {
       // Consultar estudiantes y estados de pago
       final studentsData = await _supabase
           .from('estudiantes_pasajeros')
-          .select('cuota_mensual, estado_pago');
+          .select('cuota_mensual, estado_pago')
+          .timeout(SupabaseConfig.defaultTimeout);
 
       double totalRevenue = 0.0;
       double pendingRevenue = 0.0;

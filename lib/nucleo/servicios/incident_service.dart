@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
@@ -48,9 +49,12 @@ class IncidentService {
         query = query.eq('autobus_codigo', busCode);
       }
 
-      final response = await query.order('created_at', ascending: false).limit(50);
+      final response = await query
+          .order('created_at', ascending: false)
+          .limit(50)
+          .timeout(SupabaseConfig.defaultTimeout);
 
-      return (response as List).map((row) {
+      final list = (response as List).map((row) {
         final id = row['id'] is int ? row['id'] : int.tryParse(row['id']?.toString() ?? '0') ?? 0;
         final createdAt = row['created_at'] != null
             ? DateTime.tryParse(row['created_at'].toString())?.toLocal()
@@ -79,9 +83,11 @@ class IncidentService {
           type: row['tipo'] ?? 'info',
         );
       }).toList();
+
+      return list.isNotEmpty ? list : MockData.notifications;
     } catch (e) {
-      debugPrint('Error en getNotifications: $e');
-      return [];
+      debugPrint('Aviso getNotifications (usando fallback local): $e');
+      return MockData.notifications;
     }
   }
 
@@ -91,7 +97,8 @@ class IncidentService {
       await _supabase
           .from('notificaciones')
           .update({'leida': true})
-          .eq('id', notificationId);
+          .eq('id', notificationId)
+          .timeout(SupabaseConfig.defaultTimeout);
     } catch (e) {
       debugPrint('Error en markAsRead: $e');
     }
@@ -99,22 +106,30 @@ class IncidentService {
 
   /// Stream en tiempo real de notificaciones (WebSockets)
   Stream<List<NotificationMock>> streamNotifications({String? busCode}) {
+    if (SupabaseConfig.hasCheckedReachability && !SupabaseConfig.isReachable) {
+      return Stream.value(MockData.notifications);
+    }
     return _supabase
         .from('notificaciones')
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
+        .handleError((e) {
+          debugPrint('Aviso stream notificaciones: $e');
+        })
         .map((rows) {
-          return rows.map((row) {
-            final id = row['id'] is int ? row['id'] : int.tryParse(row['id']?.toString() ?? '0') ?? 0;
-            return NotificationMock(
-              id: id,
-              title: row['titulo'] ?? 'Aviso Escolar',
-              message: row['mensaje'] ?? '',
-              time: 'En vivo',
-              read: row['leida'] ?? false,
-              type: row['tipo'] ?? 'info',
-            );
-          }).toList();
+          return rows.isNotEmpty
+              ? rows.map((row) {
+                  final id = row['id'] is int ? row['id'] : int.tryParse(row['id']?.toString() ?? '0') ?? 0;
+                  return NotificationMock(
+                    id: id,
+                    title: row['titulo'] ?? 'Aviso Escolar',
+                    message: row['mensaje'] ?? '',
+                    time: 'En vivo',
+                    read: row['leida'] ?? false,
+                    type: row['tipo'] ?? 'info',
+                  );
+                }).toList()
+              : MockData.notifications;
         });
   }
 }

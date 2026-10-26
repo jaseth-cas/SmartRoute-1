@@ -15,13 +15,14 @@ class BusService {
       final response = await _supabase
           .from('autobuses')
           .select()
-          .order('codigo', ascending: true);
+          .order('codigo', ascending: true)
+          .timeout(SupabaseConfig.defaultTimeout);
 
       final list = (response as List).map((row) => BusMock.fromMap(row)).toList();
       if (list.isNotEmpty) return list;
       return MockData.buses;
     } catch (e) {
-      debugPrint('Error en getAllBuses: $e');
+      debugPrint('Aviso getAllBuses (usando fallback local): $e');
       return MockData.buses;
     }
   }
@@ -33,13 +34,14 @@ class BusService {
           .from('autobuses')
           .select()
           .eq('codigo', code)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(SupabaseConfig.defaultTimeout);
 
-      if (response == null) return null;
+      if (response == null) return MockData.getBusByCode(code);
       return BusMock.fromMap(response);
     } catch (e) {
-      debugPrint('Error en getBusByCode: $e');
-      return null;
+      debugPrint('Aviso getBusByCode (usando fallback local): $e');
+      return MockData.getBusByCode(code);
     }
   }
 
@@ -50,12 +52,14 @@ class BusService {
           .from('autobuses')
           .select()
           .eq('dueno_id', ownerId)
-          .order('codigo', ascending: true);
+          .order('codigo', ascending: true)
+          .timeout(SupabaseConfig.defaultTimeout);
 
-      return (response as List).map((row) => BusMock.fromMap(row)).toList();
+      final list = (response as List).map((row) => BusMock.fromMap(row)).toList();
+      return list.isNotEmpty ? list : MockData.buses;
     } catch (e) {
-      debugPrint('Error en getBusesByOwner: $e');
-      return [];
+      debugPrint('Aviso getBusesByOwner (usando fallback local): $e');
+      return MockData.buses;
     }
   }
 
@@ -66,12 +70,13 @@ class BusService {
           .from('autobuses')
           .select()
           .eq('conductor_id', driverId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(SupabaseConfig.defaultTimeout);
 
       if (response == null) {
         // Fallback al primer autobús si aún no se ha asignado explícitamente
         final all = await getAllBuses();
-        return all.isNotEmpty ? all.first : null;
+        return all.isNotEmpty ? all.first : MockData.buses.first;
       }
       return BusMock.fromMap(response);
     } catch (e) {
@@ -175,19 +180,31 @@ class BusService {
 
   /// Stream en tiempo real de todos los autobuses (Para el mapa del Dueño de Flota)
   Stream<List<BusMock>> streamAllBuses() {
+    if (SupabaseConfig.hasCheckedReachability && !SupabaseConfig.isReachable) {
+      return Stream.value(MockData.buses);
+    }
     return _supabase
         .from('autobuses')
         .stream(primaryKey: ['id'])
         .order('codigo', ascending: true)
-        .map((rows) => rows.map((row) => BusMock.fromMap(row)).toList());
+        .handleError((e) {
+          debugPrint('Aviso stream all buses: $e');
+        })
+        .map((rows) => rows.isNotEmpty ? rows.map((row) => BusMock.fromMap(row)).toList() : MockData.buses);
   }
 
   /// Stream en tiempo real de un autobús específico (Para el mapa de seguimiento del Padre)
   Stream<BusMock?> streamBusByCode(String busCode) {
+    if (SupabaseConfig.hasCheckedReachability && !SupabaseConfig.isReachable) {
+      return Stream.value(MockData.getBusByCode(busCode));
+    }
     return _supabase
         .from('autobuses')
         .stream(primaryKey: ['id'])
         .eq('codigo', busCode)
-        .map((rows) => rows.isNotEmpty ? BusMock.fromMap(rows.first) : null);
+        .handleError((e) {
+          debugPrint('Aviso stream bus by code: $e');
+        })
+        .map((rows) => rows.isNotEmpty ? BusMock.fromMap(rows.first) : MockData.getBusByCode(busCode));
   }
 }
