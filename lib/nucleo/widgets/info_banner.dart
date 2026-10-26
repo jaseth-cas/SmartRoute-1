@@ -1,42 +1,52 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
 class InfoBanner extends StatelessWidget {
   final String text;
   final IconData icon;
   final Color containerColor;
   final Color contentColor;
+  final bool isWarning;
 
   const InfoBanner({
     super.key,
     required this.text,
-    this.icon = Icons.info,
-    this.containerColor = SmartColors.smartLightBlue,
-    this.contentColor = SmartColors.smartBlue,
+    this.icon = Icons.info_outline_rounded,
+    this.containerColor = SmartColors.neuInset,
+    this.contentColor = SmartColors.deepBlue,
+    this.isWarning = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: containerColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: contentColor.withValues(alpha: 0.1)),
-      ),
+    final effectiveContent = isWarning ? SmartColors.primaryCrimson : contentColor;
+    
+    return NeumorphicBox(
+      isInset: true,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      borderRadius: BorderRadius.circular(18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: contentColor, size: 20),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: effectiveContent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: effectiveContent, size: 18),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
+              style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
-                color: contentColor,
-                fontWeight: FontWeight.w500,
+                color: SmartColors.deepBlack,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
               ),
             ),
           ),

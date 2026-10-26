@@ -1,15 +1,17 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
-import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
-import 'package:smartroute_flutter/nucleo/widgets/facial_boarding_dialog.dart';
+import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -23,12 +25,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool gpsActive = true;
 
   void _openFacialScanner() {
-    FacialBoardingDialog.show(
-      context,
-      onBoardingCompleted: () {
+    context.push('/facial_checkin').then((_) {
+      if (mounted) {
         setState(() {});
-      },
-    );
+      }
+    });
   }
 
   @override
@@ -36,245 +37,379 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
     final bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final passengers = MockData.getPassengersByBus('BUS-01');
-    final absentCount = passengers.where((p) => p.status == PassengerStatus.absent).length;
-    final onboardCount = passengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final allPassengers = MockData.getPassengersByBus('BUS-01');
+    final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
 
     return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+      backgroundColor: SmartColors.neuBackground,
+      appBar: AppBar(
+        title: Text(
+          'CABINA CONDUCIDA // TELEMETRÍA',
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+            color: SmartColors.deepBlack,
+          ),
+        ),
+        backgroundColor: SmartColors.neuBackground,
+        elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14.0),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: gpsActive ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'GPS ACTIVO',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlue,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: DriverBottomBar(
         currentRoute: '/driver_home',
         onNavigate: (route) => context.go(route),
       ),
-      appBar: AppBar(
-        title: const Text('SmartRoute Conductor', style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartBlue)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        actions: [
-          IconButton(
-            tooltip: 'Terminal Facial AI',
-            icon: const Icon(Icons.face_retouching_natural, color: SmartColors.smartBlue),
-            onPressed: _openFacialScanner,
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // Perfil Conductor
-            Row(
+      body: SafeArea(
+        child: ResponsiveContent(
+          maxWidth: 1040,
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: const BoxDecoration(
-                    color: SmartColors.smartLightBlue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.person, color: SmartColors.smartBlue, size: 32),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // Perfil Conductor Esculpido (ancho completo)
+                NeumorphicBox(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  borderRadius: BorderRadius.circular(24),
+                  child: Row(
                     children: [
-                      Text(
-                        'Hola, ${session?.name ?? "Juan Pérez"}',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: SmartColors.smartBlue),
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: SmartColors.deepBlue.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.airline_seat_recline_normal_rounded, color: SmartColors.deepBlue, size: 26),
                       ),
-                      const Text('Ruta Escolar Activa • Conduce seguro', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CONDUCTOR ASIGNADO',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
+                                color: SmartColors.smartGray,
+                              ),
+                            ),
+                            Text(
+                              session?.name ?? "Juan Pérez",
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: SmartColors.deepBlack,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            Text(
+                              '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                color: SmartColors.deepBlue,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      StatusChip(text: bus.status),
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-            // Sello Trust & Safety
-            SmartRouteCard(
-              color: SmartColors.smartLightGreen.withValues(alpha: 0.6),
-              child: Row(
-                children: [
-                  const Icon(Icons.verified_user, color: SmartColors.smartGreen, size: 26),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('Sello de Confianza SmartRoute', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: SmartColors.smartGreen)),
-                        Text('Documentos, RTM y Antecedentes verificados para transporte escolar.', style: TextStyle(fontSize: 11, color: SmartColors.smartText)),
+                // Distribución 2 columnas fluida en Tablet/Desktop, 1 columna en móvil
+                ResponsiveTwoColumns(
+                  breakpoint: 800,
+                  spacing: 20,
+                  left: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Sello Trust & Safety
+                      NeumorphicBox(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: SmartColors.vibrantCyan.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.verified_user_rounded, color: SmartColors.deepBlue, size: 20),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'SELLO TRUST & SAFETY CERTIFICADO',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                      color: SmartColors.deepBlack,
+                                    ),
+                                  ),
+                                  Text(
+                                    'RTM, Antecedentes y Pólizas escolares al día',
+                                    style: GoogleFonts.plusJakartaSans(fontSize: 11, color: SmartColors.smartGray),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Alerta de Ausencias Reportadas (Ahorro de Ruta)
+                      if (absentCount > 0) ...[
+                        NeumorphicBox(
+                          isCrimson: false,
+                          padding: const EdgeInsets.all(18),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: SmartColors.primaryCrimson.withValues(alpha: 0.4), width: 1.5),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: SmartColors.primaryCrimson.withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.notifications_active_rounded, color: SmartColors.primaryCrimson, size: 22),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '$absentCount AUSENCIA NOTIFICADA HOY',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12.5,
+                                        letterSpacing: 0.4,
+                                        color: SmartColors.primaryCrimson,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Parada omitida automáticamente. Trayecto optimizado (-10 min).',
+                                      style: GoogleFonts.plusJakartaSans(fontSize: 11.5, color: SmartColors.smartGray),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                       ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
-            // Alerta de Ausencias Reportadas (Ahorro de Ruta)
-            if (absentCount > 0)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFF59E0B)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.notifications_active, color: Color(0xFFD97706), size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      // Próxima Parada
+                      NeumorphicBox(
+                        padding: const EdgeInsets.all(18),
+                        borderRadius: BorderRadius.circular(22),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PRÓXIMA PARADA',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
+                                color: SmartColors.smartGray,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Colegio San José - Puerta 1',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: SmartColors.deepBlack,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Calle 127 # 45-20 • 2 Estudiantes esperan',
+                              style: GoogleFonts.plusJakartaSans(fontSize: 11.5, color: SmartColors.deepBlue),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  right: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Métricas de Pasajeros Quivox ("12/34", "10")
+                      Row(
                         children: [
-                          const Text('1 Ausencia Notificada Hoy', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF92400E), fontSize: 13)),
-                          Text(
-                            'Valentina Castro no asiste. La parada #4 se omitió automáticamente del GPS (-10 min).',
-                            style: TextStyle(fontSize: 11, color: Colors.brown.shade800),
+                          Expanded(
+                            child: NeumorphicBox(
+                              padding: const EdgeInsets.all(18),
+                              borderRadius: BorderRadius.circular(22),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'A BORDO AHORA',
+                                    style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w800, color: SmartColors.smartGray),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '$onboardCount',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w900,
+                                      color: SmartColors.deepBlack,
+                                    ),
+                                  ),
+                                  Text(
+                                    'ALUMNOS CONFIRMADOS',
+                                    style: GoogleFonts.jetBrainsMono(fontSize: 9, fontWeight: FontWeight.w700, color: SmartColors.deepBlue),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: NeumorphicBox(
+                              padding: const EdgeInsets.all(18),
+                              borderRadius: BorderRadius.circular(22),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'OCUPACIÓN DE CUPOS',
+                                    style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w800, color: SmartColors.smartGray),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${bus.seatsOccupied}/${bus.capacity}',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w900,
+                                      color: SmartColors.deepBlack,
+                                    ),
+                                  ),
+                                  Text(
+                                    'ASIENTOS REGISTRADOS',
+                                    style: GoogleFonts.jetBrainsMono(fontSize: 9, fontWeight: FontWeight.w700, color: SmartColors.deepBlue),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+
+                      // Botón de Terminal Facial AI
+                      PrimaryButton(
+                        text: 'TERMINAL FACIAL AI (ABORDAJE)',
+                        icon: Icons.face_retouching_natural_rounded,
+                        onPressed: _openFacialScanner,
+                      ),
+                      const SizedBox(height: 12),
+
+                      GestureDetector(
+                        onTap: () => context.go('/driver_demand'),
+                        child: Container(
+                          height: 52,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: SmartColors.neuInset,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.format_list_numbered_rounded, color: SmartColors.deepBlue, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'VER MANIFIESTO DE ESTUDIANTES',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12.5,
+                                  letterSpacing: 0.8,
+                                  color: SmartColors.deepBlack,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 28),
 
-            // Información de Unidad y Recorrido
-            SmartRouteCard(
-              child: Column(
-                children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.directions_bus, color: SmartColors.smartBlue),
-                      SizedBox(width: 12),
-                      Text('Información de la Unidad Escolar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _DriverDetailRow(icon: Icons.directions_bus, label: 'Unidad:', value: '${bus.code} (${bus.model})'),
-                  _DriverDetailRow(icon: Icons.badge, label: 'Placa escolar:', value: bus.plate),
-                  _DriverDetailRow(icon: Icons.alt_route, label: 'Ruta:', value: bus.routeName ?? 'Ruta Escolar Norte'),
-                  _DriverDetailRow(icon: Icons.school, label: 'Colegio:', value: bus.schoolName ?? 'Colegio San José'),
-                  _DriverDetailRow(icon: Icons.event_seat, label: 'Cupos asignados:', value: '${bus.seatsOccupied}/${bus.capacity} Asientos ocupados'),
-                  _DriverDetailRow(icon: Icons.people, label: 'Alumnos a bordo ahora:', value: '$onboardCount niños'),
-                  const SizedBox(height: 8),
-                  const Divider(color: SmartColors.smartBorder, height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: const [
-                          Icon(Icons.stacked_line_chart, color: SmartColors.smartGray, size: 16),
-                          SizedBox(width: 12),
-                          Text('Estado del recorrido:', style: TextStyle(fontSize: 13, color: SmartColors.smartGray)),
-                        ],
+                // Cerrar Sesión centrado
+                Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      sessionManager.logout();
+                      context.go('/login');
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                      child: Text(
+                        'CERRAR SESIÓN',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                          color: SmartColors.primaryCrimson,
+                        ),
                       ),
-                      StatusChip(text: routeStatus),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: const [
-                          Icon(Icons.location_on, color: SmartColors.smartGray, size: 16),
-                          SizedBox(width: 12),
-                          Text('GPS en tiempo real:', style: TextStyle(fontSize: 13, color: SmartColors.smartGray)),
-                        ],
-                      ),
-                      StatusChip(text: gpsActive ? 'Activo' : 'Inactivo'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Botones de acción operativos
-            ElevatedButton.icon(
-              onPressed: _openFacialScanner,
-              icon: const Icon(Icons.face, size: 22),
-              label: const Text('Terminal Facial AI (Abordaje)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: SmartColors.smartBlue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => context.go('/driver_demand'),
-              icon: const Icon(Icons.format_list_numbered, size: 20),
-              label: const Text('Ver Manifiesto de Pasajeros', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: SmartColors.smartBlue,
-                side: const BorderSide(color: SmartColors.smartBlue),
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.update, color: SmartColors.smartGray, size: 14),
-                SizedBox(width: 8),
-                Text('Ubicación compartida con padres en vivo', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
+                ),
+                const SizedBox(height: 36),
               ],
             ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: () {
-                sessionManager.logout();
-                context.go('/login');
-              },
-              icon: const Icon(Icons.logout, size: 18),
-              label: const Text('Cerrar sesión', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: SmartColors.smartRed,
-                side: const BorderSide(color: SmartColors.smartBorder),
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DriverDetailRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _DriverDetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5.0),
-      child: Row(
-        children: [
-          Icon(icon, color: SmartColors.smartGray, size: 16),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(label, style: const TextStyle(fontSize: 13, color: SmartColors.smartGray)),
           ),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
-        ],
+        ),
       ),
     );
   }
