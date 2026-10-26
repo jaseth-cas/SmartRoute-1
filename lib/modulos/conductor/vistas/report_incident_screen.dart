@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../nucleo/tema/colors.dart';
+import '../../../nucleo/widgets/neumorphic_box.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/datos/mock_data.dart';
 import '../../../nucleo/modelos/models.dart';
 import '../../../nucleo/widgets/driver_bottom_bar.dart';
+import '../../../nucleo/widgets/responsive_layout.dart';
 
 class ReportIncidentScreen extends StatefulWidget {
   const ReportIncidentScreen({super.key});
@@ -20,7 +23,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
   String title = "";
   String description = "";
-  String incidentType = "Mecánico"; // Valor por defecto
+  String incidentType = "Mecánico";
 
   final List<String> incidentTypes = [
     "Mecánico",
@@ -33,23 +36,43 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   void _submitReport() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      
+
       final newNotification = NotificationMock(
         id: DateTime.now().millisecondsSinceEpoch,
         title: title,
         message: '[$incidentType] $description',
         time: 'Justo ahora',
         read: false,
-        type: (incidentType == 'Mecánico' || incidentType == 'Accidente') ? 'alert' : 'info',
+        type: (incidentType == 'Mecánico' || incidentType == 'Accidente')
+            ? 'alert'
+            : 'info',
       );
-      
+
       await MockData.addNotification(newNotification);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Incidente reportado exitosamente'),
-            backgroundColor: SmartColors.smartYellow,
+          SnackBar(
+            backgroundColor: SmartColors.deepBlack,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: SmartColors.electricCyan, size: 20),
+                const SizedBox(width: 12),
+                Text(
+                  'Incidente reportado exitosamente',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
         context.pop();
@@ -60,127 +83,236 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+      backgroundColor: SmartColors.neuBackground,
       bottomNavigationBar: DriverBottomBar(
         currentRoute: '/report_incident',
         onNavigate: (route) => context.go(route),
       ),
-      appBar: AppBar(
-        title: const Text('Reportar Incidente', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: SmartColors.smartLightRed,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SmartColors.smartRed.withValues(alpha: 0.2)),
-                ),
-                child: Row(
+      body: SafeArea(
+        child: ResponsiveContent(
+          maxWidth: 680,
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
+          child: SingleChildScrollView(
+            child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top App Bar Minimalista Quivox
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.warning_amber_rounded, color: SmartColors.smartRed, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Usa este formulario para reportar retrasos o problemas. Se enviará una alerta al administrador de forma inmediata.',
-                        style: TextStyle(color: SmartColors.smartRed.withValues(alpha: 0.8), fontSize: 13),
+                    NeumorphicBox(
+                      isPill: true,
+                      padding: const EdgeInsets.all(12),
+                      onTap: () => context.pop(),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 16,
+                        color: SmartColors.deepBlack,
                       ),
                     ),
+                    Column(
+                      children: [
+                        Text(
+                          'INCIDENT LOG',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w700,
+                            color: SmartColors.deepPetrol,
+                          ),
+                        ),
+                        Text(
+                          'Reportar Incidente',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: SmartColors.deepBlack,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 44),
                   ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              
-              const Text('Tipo de incidente', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: incidentType,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: SmartColors.smartSurface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SmartColors.smartBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SmartColors.smartBorder),
+                const SizedBox(height: 24),
+
+                // Banner de Alerta Neumórfico Crimson
+                NeumorphicBox(
+                  borderRadius: 22,
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      NeumorphicBox(
+                        isPill: true,
+                        isCrimson: true,
+                        padding: const EdgeInsets.all(10),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PRIORIDAD ALTA',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                                color: SmartColors.primaryCrimson,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Este formulario genera un despacho inmediato a la central y notifica en tiempo real a los tutores involucrados en la ruta.',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: SmartColors.deepPetrol.withValues(alpha: 0.85),
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                items: incidentTypes.map((type) {
-                  return DropdownMenuItem(
-                    value: type,
-                    child: Text(type),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() {
-                    incidentType = val!;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-              CustomTextField(
-                label: 'Título del reporte',
-                hint: 'Ej. Llanta ponchada en la vía',
-                prefixIcon: Icons.title,
-                validator: (val) => val == null || val.isEmpty ? 'El título es obligatorio' : null,
-                onChanged: (val) => title = val,
-              ),
-              const SizedBox(height: 16),
-
-              const Text('Descripción detallada', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              const SizedBox(height: 8),
-              TextFormField(
-                maxLines: 4,
-                onChanged: (val) => description = val,
-                validator: (val) => val == null || val.isEmpty ? 'Brinda más detalles' : null,
-                decoration: InputDecoration(
-                  hintText: 'Describe lo que pasó...',
-                  hintStyle: const TextStyle(color: SmartColors.smartGray),
-                  filled: true,
-                  fillColor: SmartColors.smartSurface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SmartColors.smartBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SmartColors.smartBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: SmartColors.smartBlue, width: 2),
+                // Selector de Tipo de Incidente Quivox Capsule
+                Text(
+                  'TIPO DE INCIDENCIA',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: SmartColors.deepPetrol,
                   ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              
-              PrimaryButton(
-                text: 'Enviar Reporte',
-                icon: Icons.send,
-                backgroundColor: SmartColors.smartYellow,
-                foregroundColor: Colors.white,
-                onPressed: _submitReport,
-              ),
-            ],
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: incidentTypes.map((type) {
+                      final isSelected = incidentType == type;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: NeumorphicBox(
+                          isPill: true,
+                          isDark: isSelected,
+                          onTap: () {
+                            setState(() {
+                              incidentType = type;
+                            });
+                          },
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              if (isSelected) ...[
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: SmartColors.electricCyan,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
+                                type.toUpperCase(),
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : SmartColors.deepBlack,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Título del Reporte Inset
+                CustomTextField(
+                  label: 'TÍTULO DEL REPORTE',
+                  hint: 'Ej. Falla mecánica en neumático',
+                  prefixIcon: Icons.edit_note_rounded,
+                  validator: (val) => val == null || val.isEmpty
+                      ? 'El título es obligatorio'
+                      : null,
+                  onChanged: (val) => title = val,
+                ),
+                const SizedBox(height: 20),
+
+                // Descripción Detallada Hundida Inset Neumórfica
+                Text(
+                  'DESCRIPCIÓN DETALLADA',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: SmartColors.deepPetrol,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                NeumorphicBox(
+                  isInset: true,
+                  borderRadius: 18,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: TextFormField(
+                    maxLines: 4,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      color: SmartColors.deepBlack,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onChanged: (val) => description = val,
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Brinda más detalles' : null,
+                    decoration: InputDecoration(
+                      hintText: 'Detalla ubicación, gravedad y acciones tomadas...',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        color: SmartColors.deepPetrol.withValues(alpha: 0.4),
+                        fontSize: 13,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Botón Quivox Cápsula Crimson
+                PrimaryButton(
+                  text: 'ENVIAR REPORTE CRÍTICO',
+                  icon: Icons.send_rounded,
+                  isCrimson: true,
+                  onPressed: _submitReport,
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),
+    ),
     );
   }
 }

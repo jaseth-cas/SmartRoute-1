@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
+import '../../../nucleo/widgets/neumorphic_box.dart';
+import '../../../nucleo/widgets/responsive_layout.dart';
 import '../../../nucleo/utilidades/validators.dart';
 import '../../autenticacion/datos/session_manager.dart';
 
@@ -18,28 +21,33 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   
-  String _name = '';
-  String _email = '';
-  String _phone = '';
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
 
   @override
   void initState() {
     super.initState();
-    // Simulate loading data from session
     final session = context.read<SessionManager>().currentSession;
-    _name = session?.name ?? 'Usuario';
-    _email = session?.email ?? 'padre.familia@smartroute.com';
-    _phone = '555-0192'; // Mock phone
+    _nameController = TextEditingController(text: session?.name ?? 'Carlos Gómez');
+    _emailController = TextEditingController(text: session?.email ?? 'carlos.gomez@smartroute.com');
+    _phoneController = TextEditingController(text: '+57 300 123 4567');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
   void _saveProfile() {
     if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      // Simulate saving profile logic
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Perfil actualizado exitosamente'),
-          backgroundColor: SmartColors.smartGreen,
+          content: Text('Perfil de tutor actualizado con éxito.'),
+          backgroundColor: SmartColors.deepBlue,
         ),
       );
       context.pop();
@@ -49,92 +57,120 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+      backgroundColor: SmartColors.neuBackground,
       appBar: AppBar(
-        title: const Text('Editar Perfil', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+        title: Text(
+          'CONFIG // EDITAR PERFIL',
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+            color: SmartColors.deepBlack,
+          ),
+        ),
+        backgroundColor: SmartColors.neuBackground,
+        elevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: NeumorphicBox(
+            padding: EdgeInsets.zero,
+            isPill: true,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, size: 18, color: SmartColors.deepBlack),
+              onPressed: () => context.pop(),
+            ),
+          ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+      body: ResponsiveContent.narrow(
+        maxWidth: 560,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+              const SizedBox(height: 10),
               Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  Container(
+                  NeumorphicBox(
                     width: 100,
                     height: 100,
-                    decoration: const BoxDecoration(
-                      color: SmartColors.smartLightBlue,
-                      shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(34),
+                    child: const Center(
+                      child: Icon(Icons.person_rounded, size: 50, color: SmartColors.deepBlue),
                     ),
-                    child: const Icon(Icons.person, size: 60, color: SmartColors.smartBlue),
                   ),
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: SmartColors.smartBlue,
+                    decoration: BoxDecoration(
+                      color: SmartColors.deepBlack,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                          offset: const Offset(0, 3),
+                          blurRadius: 6,
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                    child: const Icon(Icons.camera_alt_rounded, color: SmartColors.vibrantCyan, size: 16),
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
               
               CustomTextField(
-                label: 'Nombre completo',
+                label: 'Nombre de Tutor',
                 hint: 'Ingresa tu nombre',
-                prefixIcon: Icons.badge,
-                controller: TextEditingController(text: _name),
+                prefixIcon: Icons.badge_outlined,
+                controller: _nameController,
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) {
                     return 'El nombre es requerido';
                   }
                   return null;
                 },
-                onChanged: (val) => _name = val,
               ),
               const SizedBox(height: 16),
               
               CustomTextField(
-                label: 'Correo electrónico',
-                hint: 'padre.familia@smartroute.com',
-                prefixIcon: Icons.email,
+                label: 'Correo de Notificaciones',
+                hint: 'correo@ejemplo.com',
+                prefixIcon: Icons.alternate_email_rounded,
                 keyboardType: TextInputType.emailAddress,
-                controller: TextEditingController(text: _email),
+                controller: _emailController,
                 validator: Validators.validateEmail,
-                onChanged: (val) => _email = val,
               ),
               const SizedBox(height: 16),
               
               CustomTextField(
-                label: 'Teléfono',
-                hint: 'Tu número de teléfono',
-                prefixIcon: Icons.phone,
+                label: 'Teléfono Móvil (SMS Alertas)',
+                hint: 'Ingresa tu teléfono',
+                prefixIcon: Icons.phone_android_rounded,
                 keyboardType: TextInputType.phone,
-                controller: TextEditingController(text: _phone),
-                onChanged: (val) => _phone = val,
+                controller: _phoneController,
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'El teléfono es requerido para emergencias';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 32),
-              
+
               PrimaryButton(
-                text: 'Guardar cambios',
-                icon: Icons.save,
+                text: 'GUARDAR CAMBIOS',
+                icon: Icons.check_circle_outline_rounded,
                 onPressed: _saveProfile,
               ),
             ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

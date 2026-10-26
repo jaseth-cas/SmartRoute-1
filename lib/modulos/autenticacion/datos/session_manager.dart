@@ -69,7 +69,7 @@ class FakeJwtProvider {
 /// Extiende [ChangeNotifier] para que cualquier widget que lo escuche (watch)
 /// se reconstruya automáticamente cuando el usuario inicie o cierre sesión.
 class SessionManager extends ChangeNotifier {
-  JwtSession? _currentSession;
+  JwtSession? _currentSession = FakeJwtProvider.createSessionForRole(UserRole.student);
 
   /// Obtiene la sesión actual, o `null` si no hay sesión iniciada.
   JwtSession? get currentSession => _currentSession;
@@ -78,6 +78,12 @@ class SessionManager extends ChangeNotifier {
   void login(UserRole role, {String? customName}) {
     _currentSession = FakeJwtProvider.createSessionForRole(role, customName: customName);
     notifyListeners(); // Notifica a la app para reconstruir la interfaz
+  }
+
+  /// Cambia de rol de forma instantánea entre perfiles
+  void switchRole(UserRole role) {
+    _currentSession = FakeJwtProvider.createSessionForRole(role);
+    notifyListeners();
   }
 
   /// Cierra la sesión activa y borra los datos.

@@ -1,11 +1,12 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 /// Diálogo interactivo que simula el Terminal de Reconocimiento Facial AI (Edge ML)
-/// montado en el tablero del bus escolar.
+/// Rediseñado con estética Neumórfica de Alto Contraste y Minimalista Quivox.
 class FacialBoardingDialog extends StatefulWidget {
   final StudentPassengerMock? targetStudent;
   final VoidCallback onBoardingCompleted;
@@ -46,7 +47,6 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
   @override
   void initState() {
     super.initState();
-    // Si no se especificó un estudiante objetivo, tomamos el primer estudiante en espera
     final waiting = MockData.passengers.where((p) => p.status == PassengerStatus.waiting).toList();
     _selectedStudent = widget.targetStudent ?? (waiting.isNotEmpty ? waiting.first : MockData.passengers.first);
 
@@ -57,7 +57,6 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
 
     _scanAnimation = Tween<double>(begin: 0.1, end: 0.9).animate(_animController);
 
-    // Simular el ciclo de reconocimiento facial local (Edge AI < 1.5s)
     _startSimulatedRecognition();
   }
 
@@ -65,16 +64,15 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
     _timer = Timer(const Duration(milliseconds: 1600), () {
       if (mounted) {
         setState(() {
-          _step = 1; // Coincidencia encontrada
+          _step = 1;
         });
 
-        // Registrar abordaje en los datos de la app
         MockData.checkInPassenger(_selectedStudent.id, method: 'Biometría Facial AI');
 
         _timer = Timer(const Duration(milliseconds: 1200), () {
           if (mounted) {
             setState(() {
-              _step = 2; // Éxito total
+              _step = 2;
             });
           }
         });
@@ -96,50 +94,60 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A), // Slate 900
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: SmartColors.smartBlue.withValues(alpha: 0.4), width: 1.5),
+          color: SmartColors.deepBlack, // Alto contraste Quivox
+          borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
+              color: SmartColors.deepBlack.withValues(alpha: 0.4),
+              blurRadius: 30,
+              offset: const Offset(0, 14),
             ),
           ],
+          border: Border.all(
+            color: SmartColors.vibrantCyan.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Barra superior de la cámara
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
                   Container(
-                    width: 10,
-                    height: 10,
+                    width: 8,
+                    height: 8,
                     decoration: BoxDecoration(
-                      color: _step == 2 ? SmartColors.smartGreen : SmartColors.smartRed,
+                      color: _step == 2 ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
                       shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'TERMINAL IA • CÁMARA TABLERO',
-                    style: TextStyle(
-                      color: Colors.white70,
+                  const SizedBox(width: 10),
+                  Text(
+                    'TERMINAL // AI BOARDING CAMERA',
+                    style: GoogleFonts.jetBrainsMono(
+                      color: SmartColors.ghostWhite,
                       fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.0,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white70, size: 20),
-                    onPressed: () {
+                  GestureDetector(
+                    onTap: () {
                       widget.onBoardingCompleted();
                       Navigator.of(context).pop();
                     },
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close, color: SmartColors.ghostWhite, size: 16),
+                    ),
                   ),
                 ],
               ),
@@ -148,79 +156,58 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
             // Visor de Cámara Simulado con HUD Biométrico
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
-              height: 240,
+              height: 230,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFF091622),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: _step == 1 || _step == 2 ? SmartColors.smartGreen : SmartColors.smartBlue,
-                  width: 2,
+                  color: _step >= 1 ? SmartColors.vibrantCyan : SmartColors.deepBlue,
+                  width: 1.5,
                 ),
               ),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Patrón de cuadrícula de fondo
                   Icon(
-                    Icons.face,
-                    size: 130,
-                    color: _step >= 1 ? SmartColors.smartGreen.withValues(alpha: 0.3) : Colors.white12,
+                    Icons.face_retouching_natural_rounded,
+                    size: 110,
+                    color: _step >= 1
+                        ? SmartColors.vibrantCyan.withValues(alpha: 0.3)
+                        : Colors.white12,
                   ),
 
                   // Bounding Box (Cuadro de detección facial)
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    width: 170,
-                    height: 170,
+                    width: 160,
+                    height: 160,
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: _step >= 1 ? SmartColors.smartGreen : SmartColors.smartBlue,
-                        width: 2.5,
+                        color: _step >= 1 ? SmartColors.vibrantCyan : SmartColors.deepBlue,
+                        width: 2,
                       ),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Stack(
                       children: [
-                        // Esquinas resaltadas
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          child: Container(width: 14, height: 14, decoration: const BoxDecoration(color: SmartColors.smartBlue, borderRadius: BorderRadius.only(topLeft: Radius.circular(14)))),
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: Container(width: 14, height: 14, decoration: const BoxDecoration(color: SmartColors.smartBlue, borderRadius: BorderRadius.only(topRight: Radius.circular(14)))),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          child: Container(width: 14, height: 14, decoration: const BoxDecoration(color: SmartColors.smartBlue, borderRadius: BorderRadius.only(bottomLeft: Radius.circular(14)))),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(width: 14, height: 14, decoration: const BoxDecoration(color: SmartColors.smartBlue, borderRadius: BorderRadius.only(bottomRight: Radius.circular(14)))),
-                        ),
-
                         // Línea láser animada mientras escanea
                         if (_step == 0)
                           AnimatedBuilder(
                             animation: _scanAnimation,
                             builder: (context, child) {
                               return Positioned(
-                                top: _scanAnimation.value * 160,
+                                top: _scanAnimation.value * 150,
                                 left: 0,
                                 right: 0,
                                 child: Container(
-                                  height: 2,
+                                  height: 2.5,
                                   decoration: BoxDecoration(
-                                    color: SmartColors.smartBlue,
+                                    color: SmartColors.vibrantCyan,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: SmartColors.smartBlue.withValues(alpha: 0.8),
-                                        blurRadius: 8,
+                                        color: SmartColors.vibrantCyan.withValues(alpha: 0.9),
+                                        blurRadius: 10,
                                         spreadRadius: 2,
                                       ),
                                     ],
@@ -230,16 +217,15 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                             },
                           ),
 
-                        // Icono de match completado
                         if (_step >= 1)
                           Center(
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: const BoxDecoration(
-                                color: SmartColors.smartGreen,
+                                color: SmartColors.vibrantCyan,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.check, color: Colors.white, size: 36),
+                              child: const Icon(Icons.check, color: SmartColors.deepBlack, size: 32),
                             ),
                           ),
                       ],
@@ -250,21 +236,26 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                   Positioned(
                     bottom: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(12),
+                        color: SmartColors.deepBlack.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: _step >= 1 ? SmartColors.vibrantCyan : Colors.white24,
+                          width: 1,
+                        ),
                       ),
                       child: Text(
                         _step == 0
-                            ? 'Buscando rostro en visor...'
+                            ? 'ANALIZANDO PATRONES...'
                             : _step == 1
-                                ? 'Identificando embeddings...'
-                                : 'Coincidencia Biométrica: 99.4%',
-                        style: TextStyle(
-                          color: _step >= 1 ? SmartColors.smartLightGreen : Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                                ? 'COINCIDENCIA ENCONTRADA'
+                                : 'MATCH BIOMÉTRICO: 99.8%',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: _step >= 1 ? SmartColors.vibrantCyan : SmartColors.ghostWhite,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
                         ),
                       ),
                     ),
@@ -275,7 +266,7 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
 
             // Tarjeta de información del alumno identificado
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(20.0),
               child: Column(
                 children: [
                   Row(
@@ -284,11 +275,11 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: SmartColors.smartLightBlue,
+                          color: SmartColors.vibrantCyan.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
-                          border: Border.all(color: SmartColors.smartBlue),
+                          border: Border.all(color: SmartColors.vibrantCyan, width: 1.5),
                         ),
-                        child: const Icon(Icons.school, color: SmartColors.smartBlue),
+                        child: const Icon(Icons.school_rounded, color: SmartColors.vibrantCyan, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -297,15 +288,18 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                           children: [
                             Text(
                               _selectedStudent.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: SmartColors.ghostWhite,
+                                fontWeight: FontWeight.w800,
                                 fontSize: 16,
                               ),
                             ),
                             Text(
-                              '${_selectedStudent.schoolName} • ${_selectedStudent.pickupAddress}',
-                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                              '${_selectedStudent.schoolName} • ${_selectedStudent.busCode}',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white60,
+                                fontSize: 12,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -314,44 +308,63 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFF091622),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Tutor avisado por push:',
-                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                        Text(
+                          'TUTOR RESPONSABLE:',
+                          style: GoogleFonts.jetBrainsMono(color: Colors.white54, fontSize: 10.5),
                         ),
                         Text(
                           _selectedStudent.parentName,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: GoogleFonts.plusJakartaSans(
+                            color: SmartColors.ghostWhite,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _step == 2 ? SmartColors.smartGreen : SmartColors.smartBlue,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 46),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
+                  const SizedBox(height: 18),
+                  GestureDetector(
+                    onTap: () {
                       widget.onBoardingCompleted();
                       Navigator.of(context).pop();
                     },
-                    icon: Icon(_step == 2 ? Icons.done_all : Icons.camera_alt),
-                    label: Text(
-                      _step == 2 ? 'Abordaje Confirmado' : 'Finalizar Escaneo',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    child: Container(
+                      height: 50,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: _step == 2 ? SmartColors.vibrantCyan : SmartColors.deepBlue,
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_step == 2 ? SmartColors.vibrantCyan : SmartColors.deepBlue)
+                                .withValues(alpha: 0.35),
+                            offset: const Offset(0, 4),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _step == 2 ? 'CONFIRMAR Y FINALIZAR' : 'CERRAR ESCANEO',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          letterSpacing: 0.8,
+                          color: _step == 2 ? SmartColors.deepBlack : SmartColors.ghostWhite,
+                        ),
+                      ),
                     ),
                   ),
                 ],
