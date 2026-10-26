@@ -143,6 +143,14 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     _mapController.move(busPos, 16.2);
   }
 
+  void _openBusLiveCameraModal(dynamic bus) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _BusLiveCameraDialog(bus: bus),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final route = MockData.getRouteByCode(widget.routeCode);
@@ -442,6 +450,17 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: SmartColors.deepBlue),
                   )
                 : const Icon(Icons.my_location_rounded, size: 20, color: SmartColors.deepBlue),
+          ),
+          const SizedBox(height: 10),
+          NeumorphicBox(
+            isPill: true,
+            padding: const EdgeInsets.all(12),
+            onTap: () {
+              final route = MockData.getRouteByCode(widget.routeCode);
+              final bus = MockData.getBusByCode(route?.busCode ?? "BUS-01");
+              _openBusLiveCameraModal(bus);
+            },
+            child: const Icon(Icons.videocam_rounded, size: 20, color: SmartColors.primaryCrimson),
           ),
         ],
       ),
@@ -920,7 +939,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
           const SizedBox(height: 10),
 
-          // Barra de Métricas Técnicas (RANGE | MILEAGE | REMAINING)
+          // Ficha del Vehículo y Conductor (Placa | Modelo | Conductor)
           NeumorphicBox(
             isInset: true,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -929,9 +948,10 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
               children: [
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'AUTONOMÍA',
-                    subLabel: 'RANGE',
-                    value: '326 KM',
+                    label: 'PLACA',
+                    subLabel: 'MATRÍCULA',
+                    value: bus?.plate ?? 'TBX-492',
+                    icon: Icons.confirmation_number_outlined,
                   ),
                 ),
                 Container(
@@ -941,9 +961,10 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 ),
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'KILOMETRAJE',
-                    subLabel: 'MILEAGE',
-                    value: '12 683 KM',
+                    label: 'MODELO',
+                    subLabel: 'VEHÍCULO',
+                    value: bus?.model ?? 'Toyota HiAce',
+                    icon: Icons.directions_bus_outlined,
                   ),
                 ),
                 Container(
@@ -953,10 +974,102 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 ),
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'COMBUSTIBLE',
-                    subLabel: 'REMAINING',
-                    value: '65 L (82%)',
+                    label: 'CONDUCTOR',
+                    subLabel: 'OPERADOR',
+                    value: bus?.driverName ?? 'Juan Pérez',
+                    icon: Icons.person_outline_rounded,
                   ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Botón para Transmisión en Vivo de Cámara Interna del Busito
+          NeumorphicBox(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => _openBusLiveCameraModal(bus),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.videocam_rounded,
+                    color: SmartColors.primaryCrimson,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'CÁMARA INTERNA',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: SmartColors.primaryCrimson,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 4,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'LIVE',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Ver situación en vivo dentro del busito',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: SmartColors.smartGray,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: SmartColors.deepBlue,
                 ),
               ],
             ),
@@ -1064,25 +1177,43 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     required String label,
     required String subLabel,
     required String value,
+    IconData? icon,
   }) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          subLabel,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 7.5,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            color: SmartColors.smartGray,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 9.5, color: SmartColors.smartGray),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              subLabel,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 7.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: SmartColors.smartGray,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            color: SmartColors.deepBlack,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: SmartColors.deepBlack,
+            ),
           ),
         ),
         const SizedBox(height: 1),
@@ -1611,6 +1742,615 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Diálogo Modal de Conexión y Visualización de Cámara Interna del Autobús Colegial
+class _BusLiveCameraDialog extends StatefulWidget {
+  final dynamic bus;
+
+  const _BusLiveCameraDialog({required this.bus});
+
+  @override
+  State<_BusLiveCameraDialog> createState() => _BusLiveCameraDialogState();
+}
+
+class _BusLiveCameraDialogState extends State<_BusLiveCameraDialog> {
+  bool _isConnecting = true;
+  double _connectionProgress = 0.25;
+  String _statusText = 'Iniciando enlace satelital 4G con el busito...';
+  String _stepText = 'Paso 1 de 3: Calibrando telemetría remota';
+  int _activeCamIndex = 0;
+  bool _isMuted = false;
+  Timer? _clockTimer;
+  String _liveClock = '';
+
+  final List<String> _cameraAngles = [
+    'CAM-01 [PASILLO CENTRAL]',
+    'CAM-02 [PUERTA DE ACCESO]',
+    'CAM-03 [CABINA CONDUCTOR]',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _updateClock();
+    _startSimulatedConnection();
+  }
+
+  void _updateClock() {
+    final now = DateTime.now();
+    _liveClock =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+  }
+
+  void _startSimulatedConnection() {
+    // Paso 1: Enlace en progreso
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 0.60;
+        _statusText = 'Verificando túnel de video seguro y permisos telemáticos...';
+        _stepText = 'Paso 2 de 3: Autenticando canal cifrado';
+      });
+    });
+
+    // Paso 2: Sincronizando streaming
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 0.90;
+        _statusText = 'Sincronizando transmisión en directo con la cabina escolar...';
+        _stepText = 'Paso 3 de 3: Conexión establecida con éxito';
+      });
+    });
+
+    // Paso 3: Conectado a la cámara interior
+    Future.delayed(const Duration(milliseconds: 2300), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 1.0;
+        _isConnecting = false;
+      });
+
+      _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() => _updateClock());
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isConnecting) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: NeumorphicBox(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          borderRadius: BorderRadius.circular(26),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header badge telemático
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: SmartColors.deepBlack,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: SmartColors.vibrantCyan,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'SMARTROUTE EYE // TELEMETRÍA',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                          color: SmartColors.ghostWhite,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Radar animado con ícono de cámara y progreso
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 90,
+                      height: 90,
+                      child: CircularProgressIndicator(
+                        value: _connectionProgress,
+                        strokeWidth: 4.5,
+                        backgroundColor: SmartColors.neuInset,
+                        valueColor: const AlwaysStoppedAnimation<Color>(SmartColors.vibrantCyan),
+                      ),
+                    ),
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: SmartColors.deepBlue.withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.videocam_rounded,
+                        size: 32,
+                        color: SmartColors.primaryCrimson,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 22),
+
+                Text(
+                  'Conectando con el bus ${widget.bus?.code ?? 'BUS-01'}...',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: SmartColors.neuInset,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'PLACA: ${widget.bus?.plate ?? 'TBX-492'}  •  MODELO: ${widget.bus?.model ?? 'Toyota HiAce'}  •  CONDUCTOR: ${widget.bus?.driverName ?? 'Juan Pérez'}',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: SmartColors.deepBlue,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Text(
+                  _statusText,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: _connectionProgress,
+                    minHeight: 6,
+                    backgroundColor: SmartColors.neuInset,
+                    valueColor: const AlwaysStoppedAnimation<Color>(SmartColors.vibrantCyan),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  _stepText,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                NeumorphicBox(
+                  isPill: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancelar enlace',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: SmartColors.primaryCrimson,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Vista Conectada: Transmisión en Tiempo Real de la Cámara Interior
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: NeumorphicBox(
+        padding: const EdgeInsets.all(18),
+        borderRadius: BorderRadius.circular(26),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 780),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Barra superior: Estado en vivo, Identificación y Botón de cierre
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SmartColors.primaryCrimson,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'EN VIVO',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '${widget.bus?.code ?? 'BUS-01'} • ${widget.bus?.model ?? 'Toyota HiAce'} [${widget.bus?.plate ?? 'TBX-492'}]',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: SmartColors.deepBlack,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SmartColors.neuInset,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time_rounded, size: 12, color: SmartColors.deepBlue),
+                            const SizedBox(width: 4),
+                            Text(
+                              _liveClock,
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: SmartColors.deepBlack,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      NeumorphicBox(
+                        isPill: true,
+                        padding: const EdgeInsets.all(8),
+                        onTap: () => Navigator.of(context).pop(),
+                        child: const Icon(Icons.close_rounded, size: 18, color: SmartColors.deepBlack),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // Monitor de Video CCTV Interior del Autobús
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  color: Colors.black,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Imagen de seguridad interior realista
+                        Image.asset(
+                          'assets/images/bus_interior_cctv.jpg',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: SmartColors.deepBlack,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.videocam_rounded, color: SmartColors.vibrantCyan, size: 48),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Transmisión en directo en línea',
+                                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                        // Gradiente de contraste para datos HUD
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.65),
+                                Colors.transparent,
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.75),
+                              ],
+                              stops: const [0.0, 0.22, 0.78, 1.0],
+                            ),
+                          ),
+                        ),
+
+                        // HUD Superior de Grabación y Cámara
+                        Positioned(
+                          top: 12,
+                          left: 14,
+                          right: 14,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'REC [HD 1080p 30fps]',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.white24, width: 0.8),
+                                ),
+                                child: Text(
+                                  _cameraAngles[_activeCamIndex],
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: SmartColors.vibrantCyan,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // HUD Inferior con Conductor, Velocidad y Estado
+                        Positioned(
+                          bottom: 12,
+                          left: 14,
+                          right: 14,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'COND: ${widget.bus?.driverName ?? 'Juan Pérez'} // CABINA SEGURA',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'ESTUDIANTES: ${widget.bus?.seatsOccupied ?? 8} / ${widget.bus?.capacity ?? 14}  •  VELOCIDAD: 38 KM/H',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: SmartColors.vibrantCyan,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: SmartColors.smartGreen.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_circle_outline_rounded, size: 12, color: Colors.white),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'SITUACIÓN NORMAL',
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Controles: Conmutador de ángulos de cámara y audio
+              Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: List.generate(_cameraAngles.length, (index) {
+                        final isSelected = _activeCamIndex == index;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => _activeCamIndex = index);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Conmutando a ${_cameraAngles[index]}',
+                                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                                ),
+                                duration: const Duration(seconds: 1),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: SmartColors.deepBlack,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected ? SmartColors.deepBlack : SmartColors.neuInset,
+                              borderRadius: BorderRadius.circular(10),
+                              border: isSelected
+                                  ? Border.all(color: SmartColors.vibrantCyan, width: 1.2)
+                                  : null,
+                            ),
+                            child: Text(
+                              _cameraAngles[index].replaceAll(RegExp(r'\[.*\]'), '').trim(),
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                color: isSelected ? SmartColors.vibrantCyan : SmartColors.deepBlack,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  NeumorphicBox(
+                    isPill: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    onTap: () {
+                      setState(() => _isMuted = !_isMuted);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _isMuted ? 'Micrófono de cabina silenciado' : 'Micrófono de cabina en vivo activado',
+                            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                          ),
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: SmartColors.deepBlack,
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                          size: 16,
+                          color: _isMuted ? SmartColors.primaryCrimson : SmartColors.deepBlue,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isMuted ? 'MUTE' : 'AUDIO',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: SmartColors.deepBlack,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

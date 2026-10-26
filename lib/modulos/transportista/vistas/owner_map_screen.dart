@@ -310,7 +310,7 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
                                   ),
                                 ),
                                 Text(
-                                  _selectedBus?.model ?? 'Toyota Coaster Escolar',
+                                  _selectedBus?.model ?? 'Toyota HiAce',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,

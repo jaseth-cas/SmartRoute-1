@@ -743,7 +743,7 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
                   ),
                 ),
                 Text(
-                  '416x360',
+                  '3D MESH // 468-PTS',
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 8,
                     fontWeight: FontWeight.w600,
@@ -754,17 +754,24 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
             ),
           ),
 
-          // Malla Facial Minimalista en Blanco (Referencia Imagen 1)
-          if (_currentPhase == 2 && _nodeRevealProgress > 0.05 && _isRealFaceDetected)
+          // Malla Facial Dinámica Adaptativa en Vivo (Redimensión y Morfología)
+          if ((_currentPhase == 2 || isMatch) && _nodeRevealProgress > 0.05 && _isRealFaceDetected)
             Positioned.fill(
               child: AnimatedBuilder(
-                animation: _meshPulseAnimation,
+                animation: Listenable.merge([
+                  _meshPulseAnimation,
+                  _laserAnimation,
+                  _trackingJitterController,
+                ]),
                 builder: (context, child) {
                   return CustomPaint(
                     painter: _MinimalFaceMeshPainter(
                       pulseFactor: _meshPulseAnimation.value,
+                      laserY: _laserAnimation.value,
                       nodeRevealProgress: _nodeRevealProgress,
                       isMatchConfirmed: isMatch,
+                      stabilityScore: _faceStabilityScore,
+                      jitterFactor: _trackingJitterController.value,
                     ),
                   );
                 },
@@ -1165,96 +1172,131 @@ class _CameraGridPainter extends CustomPainter {
 /// Nodos sólidos blancos y red triangular fina de alta definición con revelado progresivo
 class _MinimalFaceMeshPainter extends CustomPainter {
   final double pulseFactor;
+  final double laserY;
   final double nodeRevealProgress;
   final bool isMatchConfirmed;
+  final double stabilityScore;
+  final double jitterFactor;
 
   _MinimalFaceMeshPainter({
     required this.pulseFactor,
+    this.laserY = 0.5,
     required this.nodeRevealProgress,
     required this.isMatchConfirmed,
+    this.stabilityScore = 50.0,
+    this.jitterFactor = 0.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
 
-    // 1. PUNTOS ANATÓMICOS REALES (Curvatura Craneofacial Humana sobre 290x360)
-    // A. Bóveda Craneal y Frente (Curva suave ovalada, no puntiaguda)
-    final hairlineCenter = Offset(center.dx, center.dy - 132);
-    final hairlineL1 = Offset(center.dx - 38, center.dy - 124);
-    final hairlineR1 = Offset(center.dx + 38, center.dy - 124);
-    final hairlineL2 = Offset(center.dx - 70, center.dy - 100);
-    final hairlineR2 = Offset(center.dx + 70, center.dy - 100);
-    final templeL = Offset(center.dx - 86, center.dy - 64);
-    final templeR = Offset(center.dx + 86, center.dy - 64);
+    // Escala base dimensional (290 x 360)
+    final sx = size.width / 290.0;
+    final sy = size.height / 360.0;
 
-    final foreheadMidC = Offset(center.dx, center.dy - 88);
-    final foreheadMidL = Offset(center.dx - 40, center.dy - 84);
-    final foreheadMidR = Offset(center.dx + 40, center.dy - 84);
-    final glabella = Offset(center.dx, center.dy - 46);
+    // Factor de búsqueda / adaptación de silueta en vivo:
+    // Durante el escaneo activo, los nodos exploran y se adaptan orgánicamente a la fisonomía del usuario.
+    // Conforme la estabilidad y el match avanzan hacia el 100%, la malla se ancla rígidamente.
+    final scanningFactor = isMatchConfirmed ? 0.0 : (1.0 - (stabilityScore / 100.0).clamp(0.0, 1.0));
+    final laserTargetY = (laserY * size.height) - center.dy;
 
-    // B. Cejas Anatómicas Aladas (Arco natural)
-    final browInnerL = Offset(center.dx - 18, center.dy - 48);
-    final browMidL = Offset(center.dx - 42, center.dy - 58);
-    final browPeakL = Offset(center.dx - 62, center.dy - 56);
-    final browTailL = Offset(center.dx - 82, center.dy - 44);
+    // Función de cálculo morfológico adaptativo para cada nodo en tiempo real
+    Offset pt(double dx, double dy, {double depthWeight = 1.0}) {
+      // Deformación por barrido láser: cuando el haz pasa por la altura del nodo,
+      // genera un microrrelieve de escaneo 3D adaptativo
+      final distY = (dy * sy - laserTargetY).abs();
+      final laserWave = math.exp(-math.pow(distY / 42.0, 2));
 
-    final browInnerR = Offset(center.dx + 18, center.dy - 48);
-    final browMidR = Offset(center.dx + 42, center.dy - 58);
-    final browPeakR = Offset(center.dx + 62, center.dy - 56);
-    final browTailR = Offset(center.dx + 82, center.dy - 44);
+      // Expansión lateral y adaptación al relieve facial
+      final lateralDirection = dx == 0 ? 0.0 : (dx > 0 ? 1.0 : -1.0);
+      final morphX = lateralDirection * laserWave * 5.0 * depthWeight * scanningFactor;
+      final microJitterX = math.sin(jitterFactor * math.pi * 2 + dy * 0.04) * 2.4 * scanningFactor;
+      final microJitterY = math.cos(jitterFactor * math.pi * 2 + dx * 0.04) * 1.8 * scanningFactor;
 
-    // C. Ojos Amigdalinos (Forma de almendra con párpados superior e inferior)
-    final eyeInnerL = Offset(center.dx - 22, center.dy - 20);
-    final eyeTopL = Offset(center.dx - 46, center.dy - 28);
-    final eyePupilL = Offset(center.dx - 46, center.dy - 20);
-    final eyeBottomL = Offset(center.dx - 46, center.dy - 13);
-    final eyeOuterL = Offset(center.dx - 70, center.dy - 20);
+      final finalX = center.dx + (dx + morphX + microJitterX) * sx;
+      final finalY = center.dy + (dy + microJitterY) * sy;
 
-    final eyeInnerR = Offset(center.dx + 22, center.dy - 20);
-    final eyeTopR = Offset(center.dx + 46, center.dy - 28);
-    final eyePupilR = Offset(center.dx + 46, center.dy - 20);
-    final eyeBottomR = Offset(center.dx + 46, center.dy - 13);
-    final eyeOuterR = Offset(center.dx + 70, center.dy - 20);
+      return Offset(finalX, finalY);
+    }
 
-    // D. Pómulos Cigomáticos y Región Infraorbitaria (Punto más ancho del rostro)
-    final zygomaL = Offset(center.dx - 86, center.dy + 8);
-    final zygomaR = Offset(center.dx + 86, center.dy + 8);
-    final infraorbitalL = Offset(center.dx - 46, center.dy + 8);
-    final infraorbitalR = Offset(center.dx + 46, center.dy + 8);
-    final midCheekL = Offset(center.dx - 58, center.dy + 40);
-    final midCheekR = Offset(center.dx + 58, center.dy + 40);
+    // 1. PUNTOS ANATÓMICOS REALES (Curvatura Craneofacial Humana Calibrada con Nariz en Centro)
+    // A. Bóveda Craneal y Frente (Curva anatómica natural que abarca el cráneo superior)
+    final hairlineCenter = pt(0, -140);
+    final hairlineL1 = pt(-44, -134);
+    final hairlineR1 = pt(44, -134);
+    final hairlineL2 = pt(-82, -118);
+    final hairlineR2 = pt(82, -118);
+    final templeL = pt(-110, -82);
+    final templeR = pt(110, -82);
 
-    // E. Nariz Tridimensional (Pirámide Nasal, Dorso y Alares)
-    final nasion = Offset(center.dx, center.dy - 22);
-    final rhinion = Offset(center.dx, center.dy + 4);
-    final supratip = Offset(center.dx, center.dy + 24);
-    final noseTip = Offset(center.dx, center.dy + 34);
-    final alarL = Offset(center.dx - 20, center.dy + 32);
-    final alarR = Offset(center.dx + 20, center.dy + 32);
-    final subnasale = Offset(center.dx, center.dy + 46);
+    final foreheadMidC = pt(0, -105);
+    final foreheadMidL = pt(-48, -100);
+    final foreheadMidR = pt(48, -100);
+    final glabella = pt(0, -68);
 
-    // F. Labios y Filtrum (Arco de Cupido y comisuras naturales)
-    final philtrumL = Offset(center.dx - 7, center.dy + 54);
-    final philtrumR = Offset(center.dx + 7, center.dy + 54);
-    final cupidPeakL = Offset(center.dx - 9, center.dy + 62);
-    final cupidDip = Offset(center.dx, center.dy + 65);
-    final cupidPeakR = Offset(center.dx + 9, center.dy + 62);
-    final mouthCornerL = Offset(center.dx - 34, center.dy + 68);
-    final mouthCornerR = Offset(center.dx + 34, center.dy + 68);
-    final upperLipCenter = Offset(center.dx, center.dy + 68);
-    final mouthOpening = Offset(center.dx, center.dy + 71);
-    final lowerLipBottom = Offset(center.dx, center.dy + 82);
+    // B. Cejas Anatómicas Aladas (Arco natural a la altura real sobre las órbitas)
+    final browInnerL = pt(-22, -68);
+    final browMidL = pt(-50, -78);
+    final browPeakL = pt(-76, -76);
+    final browTailL = pt(-102, -62);
 
-    // G. Mandíbula y Mentón (Curva mandibular orgánica descendente)
-    final jawAngleL = Offset(center.dx - 78, center.dy + 82);
-    final jawAngleR = Offset(center.dx + 78, center.dy + 82);
-    final jawMidL = Offset(center.dx - 52, center.dy + 110);
-    final jawMidR = Offset(center.dx + 52, center.dy + 110);
-    final chinGroove = Offset(center.dx, center.dy + 98);
-    final chinL = Offset(center.dx - 20, center.dy + 128);
-    final chinBottom = Offset(center.dx, center.dy + 134);
-    final chinR = Offset(center.dx + 20, center.dy + 128);
+    final browInnerR = pt(22, -68);
+    final browMidR = pt(50, -78);
+    final browPeakR = pt(76, -76);
+    final browTailR = pt(102, -62);
+
+    // C. Ojos Amigdalinos (Alineados a la altura real de los ojos del usuario)
+    final eyeInnerL = pt(-25, -45);
+    final eyeTopL = pt(-54, -54);
+    final eyePupilL = pt(-54, -45);
+    final eyeBottomL = pt(-54, -36);
+    final eyeOuterL = pt(-84, -45);
+
+    final eyeInnerR = pt(25, -45);
+    final eyeTopR = pt(54, -54);
+    final eyePupilR = pt(54, -45);
+    final eyeBottomR = pt(54, -36);
+    final eyeOuterR = pt(84, -45);
+
+    // D. Pómulos Cigomáticos y Región Infraorbitaria (Ancho humano natural ~236px)
+    final zygomaL = pt(-116, -2);
+    final zygomaR = pt(116, -2);
+    final infraorbitalL = pt(-52, -20);
+    final infraorbitalR = pt(52, -20);
+    final midCheekL = pt(-82, 24);
+    final midCheekR = pt(82, 24);
+
+    // E. Pirámide Nasal Tridimensional (Punta de la nariz calibrada exactamente al centro)
+    final nasion = pt(0, -44);
+    final rhinion = pt(0, -22);
+    final supratip = pt(0, -8);
+    final noseTip = pt(0, 2);
+    final alarL = pt(-24, 0);
+    final alarR = pt(24, 0);
+    final subnasale = pt(0, 16);
+
+    // F. Labios y Filtrum (Proporción áurea perioral)
+    final philtrumL = pt(-8, 25);
+    final philtrumR = pt(8, 25);
+    final cupidPeakL = pt(-11, 34);
+    final cupidDip = pt(0, 36);
+    final cupidPeakR = pt(11, 34);
+    final mouthCornerL = pt(-40, 42);
+    final mouthCornerR = pt(40, 42);
+    final upperLipCenter = pt(0, 42);
+    final mouthOpening = pt(0, 45);
+    final lowerLipBottom = pt(0, 58);
+
+    // G. Mandíbula y Mentón (Curva mandibular orgánica descendente hasta el mentón real)
+    final jawAngleL = pt(-104, 52);
+    final jawAngleR = pt(104, 52);
+    final jawMidL = pt(-70, 82);
+    final jawMidR = pt(70, 82);
+    final chinGroove = pt(0, 76);
+    final chinL = pt(-26, 104);
+    final chinR = pt(26, 104);
+    final chinBottom = pt(0, 110);
 
     // 2. CONEXIONES TRIANGULARES ANATÓMICAS (Malla Delaunay de Silueta Humana)
     final connections = [
@@ -1411,18 +1453,36 @@ class _MinimalFaceMeshPainter extends CustomPainter {
     ];
 
     // Trazo de líneas de malla: fino (0.85px) y en blanco minimalista (Referencia Imagen 1)
-    // Se mantiene homogéneamente en blanco elegante sin estridencias gamificadas
-    final linePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.42)
-      ..strokeWidth = 0.85
-      ..style = PaintingStyle.stroke;
+    final laserPixelY = laserY * size.height;
 
+    // Trazo de líneas de malla: adaptativo con brillo dinámico al paso del escáner
     final visibleConnections = (connections.length * nodeRevealProgress).clamp(0, connections.length).toInt();
     for (int i = 0; i < visibleConnections; i++) {
-      canvas.drawLine(connections[i][0], connections[i][1], linePaint);
+      final p1 = connections[i][0];
+      final p2 = connections[i][1];
+      final midY = (p1.dy + p2.dy) / 2;
+      final distToLaser = (midY - laserPixelY).abs();
+      final lineLaserInfluence = isMatchConfirmed ? 0.0 : math.max(0.0, 1.0 - (distToLaser / 36.0));
+
+      final lineColor = isMatchConfirmed
+          ? SmartColors.smartGreen.withValues(alpha: 0.45)
+          : (lineLaserInfluence > 0.05
+              ? Color.lerp(Colors.white.withValues(alpha: 0.38), SmartColors.vibrantCyan.withValues(alpha: 0.75), lineLaserInfluence)!
+              : Colors.white.withValues(alpha: 0.38));
+
+      final lineStroke = 0.85 + (isMatchConfirmed ? 0.2 : 0.65 * lineLaserInfluence);
+
+      canvas.drawLine(
+        p1,
+        p2,
+        Paint()
+          ..color = lineColor
+          ..strokeWidth = lineStroke
+          ..style = PaintingStyle.stroke,
+      );
     }
 
-    // 3. NODOS ANATÓMICOS SOLID WHITE (Revelado progresivo orgánico)
+    // 3. NODOS ANATÓMICOS CON REDIMENSIONAMIENTO DINÁMICO EN VIVO
     final nodes = [
       // 1. Nariz Central (Punto ancla inicial)
       nasion, rhinion, supratip, noseTip, alarL, alarR, subnasale,
@@ -1440,26 +1500,61 @@ class _MinimalFaceMeshPainter extends CustomPainter {
       jawAngleL, jawAngleR, jawMidL, jawMidR, chinGroove, chinL, chinBottom, chinR,
     ];
 
+    // Nodos principales para jerarquía de tamaño biométrico
+    final majorNodes = {
+      noseTip, eyePupilL, eyePupilR, zygomaL, zygomaR, chinBottom, glabella, cupidDip,
+    };
+
     final visibleNodes = (nodes.length * nodeRevealProgress).clamp(0, nodes.length).toInt();
 
     for (int i = 0; i < visibleNodes; i++) {
       final pos = nodes[i];
+      final isMajor = majorNodes.contains(pos);
 
-      // Halo blanco translúcido
+      // 1. Detección de proximidad al haz láser de escaneo en tiempo real
+      final distToLaser = (pos.dy - laserPixelY).abs();
+      final laserProximity = isMatchConfirmed ? 0.0 : math.max(0.0, 1.0 - (distToLaser / 38.0));
+      final dynamicLaserBoost = math.pow(laserProximity, 1.6).toDouble();
+
+      // 2. Redimensión Dinámica del Núcleo del Nodo:
+      // - Radio base adaptado por jerarquía anatómica
+      // - Pulso respiratorio de vivacidad
+      // - Expansión óptica en vivo al pasar el escáner sobre la superficie facial
+      final baseCore = isMajor ? 2.5 : 1.9;
+      final dynamicCoreRadius = (baseCore * (0.92 + 0.16 * pulseFactor)) + (2.4 * dynamicLaserBoost);
+
+      // 3. Redimensión Dinámica del Halo Exterior de Sensor:
+      final baseHalo = isMajor ? 5.5 : 3.8;
+      final dynamicHaloRadius = (baseHalo * pulseFactor) + (7.2 * dynamicLaserBoost);
+
+      // 4. Color y luminosidad adaptativa en tiempo real
+      final haloColor = isMatchConfirmed
+          ? SmartColors.smartGreen.withValues(alpha: 0.35)
+          : (laserProximity > 0.1
+              ? SmartColors.vibrantCyan.withValues(alpha: 0.22 + 0.50 * dynamicLaserBoost)
+              : Colors.white.withValues(alpha: 0.22 * pulseFactor));
+
+      final coreColor = isMatchConfirmed
+          ? SmartColors.smartGreen
+          : (laserProximity > 0.15
+              ? Color.lerp(Colors.white, SmartColors.vibrantCyan, dynamicLaserBoost)!
+              : Colors.white);
+
+      // Halo Luminoso Adaptativo
       canvas.drawCircle(
         pos,
-        3.8 * pulseFactor,
+        dynamicHaloRadius,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.22 * pulseFactor)
+          ..color = haloColor
           ..style = PaintingStyle.fill,
       );
 
-      // Núcleo blanco sólido nítido (2.1px)
+      // Núcleo Sólido Nítido
       canvas.drawCircle(
         pos,
-        2.1,
+        dynamicCoreRadius,
         Paint()
-          ..color = Colors.white
+          ..color = coreColor
           ..style = PaintingStyle.fill,
       );
     }
