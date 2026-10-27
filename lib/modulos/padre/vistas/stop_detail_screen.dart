@@ -9,6 +9,7 @@ import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class StopDetailScreen extends StatefulWidget {
   final String stopCode;
@@ -234,7 +235,15 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                   PrimaryButton(
                     text: 'SELECCIONAR ESTA PARADA',
                     icon: Icons.check_circle_rounded,
-                    onPressed: () => context.go('/map/${stop.routeCode}/${stop.stopCode}'),
+                    onPressed: () {
+                      TransitLoadingScreen.open(
+                        context,
+                        targetRoute: '/map/${stop.routeCode}/${stop.stopCode}',
+                        title: 'CARGANDO UBICACIÓN DE PARADA',
+                        subtitle: 'Localizando unidad Toyota HiAce en la parada ${stop.name}...',
+                        badge: 'GEOLOCALIZACIÓN PARADA',
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
 

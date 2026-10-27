@@ -10,6 +10,7 @@ import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class StopsScreen extends StatelessWidget {
   final String routeCode;
@@ -91,7 +92,15 @@ class StopsScreen extends StatelessWidget {
                   final stop = stops[index - 1];
                   return StopCard(
                     stop: stop,
-                    onSelect: () => context.go('/map/$routeCode/${stop.stopCode}'),
+                    onSelect: () {
+                      TransitLoadingScreen.open(
+                        context,
+                        targetRoute: '/map/$routeCode/${stop.stopCode}',
+                        title: 'CARGANDO PARADA EN MAPA',
+                        subtitle: 'Localizando parada ${stop.name} y unidad TBX-492...',
+                        badge: 'RASTREO EN VIVO',
+                      );
+                    },
                     onDetail: () => context.go('/stop_detail/${stop.stopCode}'),
                   );
                 },

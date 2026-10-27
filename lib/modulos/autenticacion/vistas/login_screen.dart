@@ -8,6 +8,8 @@ import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/continuous_tabs.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 
@@ -60,17 +62,26 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
     context.read<SessionManager>().login(role, customName: customName);
-    switch (role) {
-      case UserRole.student:
-        context.go('/student_home');
-        break;
-      case UserRole.driver:
-        context.go('/driver_home');
-        break;
-      case UserRole.owner:
-        context.go('/owner_home');
-        break;
-    }
+
+    final targetRoute = role == UserRole.student
+        ? '/student_home'
+        : role == UserRole.driver
+            ? '/driver_home'
+            : '/owner_home';
+
+    final roleLabel = role == UserRole.student
+        ? 'PADRE DE FAMILIA'
+        : role == UserRole.driver
+            ? 'CHOFER DE RUTA'
+            : 'DUEÑO DE FLOTA';
+
+    TransitLoadingScreen.open(
+      context,
+      targetRoute: targetRoute,
+      title: 'ACCEDIENDO COMO $roleLabel',
+      subtitle: 'Iniciando sesión segura y sincronizando la unidad escolar TBX-492...',
+      badge: 'AUTENTICACIÓN TRANSIT OS',
+    );
   }
 
   @override
@@ -358,65 +369,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 8),
 
-          Container(
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: SmartColors.neuInset,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: SmartColors.deepBlue.withValues(alpha: 0.05),
-                  offset: const Offset(1.5, 2),
-                  blurRadius: 4,
-                ),
-                const BoxShadow(
-                  color: Colors.white,
-                  offset: Offset(-1.5, -2),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            child: Row(
-              children: UserRole.values.map((role) {
-                final isSelected = selectedRole == role;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => _updateCredentialsForRole(role),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? SmartColors.deepBlack : Colors.transparent,
-                        borderRadius: BorderRadius.circular(999),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                                  offset: const Offset(0, 3),
-                                  blurRadius: 8,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        role == UserRole.student
-                            ? 'PADRE'
-                            : role == UserRole.driver
-                                ? 'CHOFER'
-                                : 'DUEÑO',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                          color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+          ContinuousTabs<UserRole>(
+            selected: selectedRole,
+            onChanged: _updateCredentialsForRole,
+            tabs: const [
+              ContinuousTabItem(value: UserRole.student, label: 'PADRE'),
+              ContinuousTabItem(value: UserRole.driver, label: 'CHOFER'),
+              ContinuousTabItem(value: UserRole.owner, label: 'DUEÑO'),
+            ],
           ),
           const SizedBox(height: 20),
 

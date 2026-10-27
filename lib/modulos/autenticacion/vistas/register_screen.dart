@@ -6,6 +6,7 @@ import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/continuous_tabs.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -97,53 +98,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 28),
 
                     // Selector de Rol tipo Quivox Segmented Pill
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: SmartColors.neuInset,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        children: UserRole.values.map((role) {
-                          final isSelected = _selectedRole == role;
-                          return Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _selectedRole = role),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? SmartColors.deepBlack : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                                            offset: const Offset(0, 3),
-                                            blurRadius: 8,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  role == UserRole.student
-                                      ? 'PADRE'
-                                      : role == UserRole.driver
-                                          ? 'CHOFER'
-                                          : 'DUEÑO',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.8,
-                                    color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                    ContinuousTabs<UserRole>(
+                      selected: _selectedRole,
+                      onChanged: (role) => setState(() => _selectedRole = role),
+                      tabs: const [
+                        ContinuousTabItem(value: UserRole.student, label: 'PADRE'),
+                        ContinuousTabItem(value: UserRole.driver, label: 'CHOFER'),
+                        ContinuousTabItem(value: UserRole.owner, label: 'DUEÑO'),
+                      ],
                     ),
                     const SizedBox(height: 24),
                     

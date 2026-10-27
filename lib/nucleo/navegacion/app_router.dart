@@ -25,6 +25,7 @@ import 'package:smartroute_flutter/modulos/conductor/vistas/facial_checkin_scree
 import 'package:smartroute_flutter/modulos/transportista/vistas/owner_home_screen.dart';
 import 'package:smartroute_flutter/modulos/transportista/vistas/owner_map_screen.dart';
 import 'package:smartroute_flutter/modulos/transportista/vistas/register_bus_screen.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 /// Clase principal para el enrutamiento de la aplicación utilizando GoRouter.
 /// GoRouter facilita la navegación declarativa y el soporte de enlaces profundos (deep links).
@@ -58,105 +59,157 @@ class AppRouter {
           builder: (context, state) => const RegisterScreen(),
         ),
         GoRoute(
+          path: '/transit_loading',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>?;
+            final targetRoute = extra?['targetRoute'] as String? ?? '/role_home';
+            final title = extra?['title'] as String? ?? 'CONECTANDO CON SMARTROUTE';
+            final subtitle = extra?['subtitle'] as String? ?? 'Sincronizando satélites GPS y telemetría de ruta...';
+            final badge = extra?['badge'] as String? ?? 'TELEMETRÍA EN TIEMPO REAL';
+            final duration = extra?['duration'] as Duration? ?? const Duration(milliseconds: 2200);
+
+            return TransitLoadingScreen(
+              targetRoute: targetRoute,
+              title: title,
+              subtitle: subtitle,
+              badge: badge,
+              duration: duration,
+            );
+          },
+        ),
+        GoRoute(
           path: '/role_home',
           builder: (context, state) => RoleHomeScreen(
             onNavigateToLogin: () => context.go('/login'),
             onNavigateToRoleHome: (role) {
-              switch (role) {
-                case UserRole.student:
-                  context.go('/student_home');
-                  break;
-                case UserRole.driver:
-                  context.go('/driver_home');
-                  break;
-                case UserRole.owner:
-                  context.go('/owner_home');
-                  break;
-              }
+              final targetRoute = role == UserRole.student
+                  ? '/student_home'
+                  : role == UserRole.driver
+                      ? '/driver_home'
+                      : '/owner_home';
+              TransitLoadingScreen.open(
+                context,
+                targetRoute: targetRoute,
+                title: 'INGRESANDO AL PANEL PRINCIPAL',
+                subtitle: 'Sincronizando la unidad escolar Toyota HiAce (TBX-492)...',
+                badge: 'SMARTROUTE OS',
+              );
             },
           ),
         ),
         GoRoute(
           path: '/student_home',
-          builder: (context, state) => const StudentHomeScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: StudentHomeScreen(),
+          ),
         ),
         GoRoute(
           path: '/routes',
-          builder: (context, state) => const RoutesScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: RoutesScreen(),
+          ),
         ),
         GoRoute(
           path: '/route_detail/:routeCode',
-          builder: (context, state) => RouteDetailScreen(
-            routeCode: state.pathParameters['routeCode']!,
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: RouteDetailScreen(
+              routeCode: state.pathParameters['routeCode']!,
+            ),
           ),
         ),
         GoRoute(
           path: '/stops/:routeCode',
-          builder: (context, state) => StopsScreen(
-            routeCode: state.pathParameters['routeCode']!,
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: StopsScreen(
+              routeCode: state.pathParameters['routeCode']!,
+            ),
           ),
         ),
         GoRoute(
           path: '/stop_detail/:stopCode',
-          builder: (context, state) => StopDetailScreen(
-            stopCode: state.pathParameters['stopCode']!,
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: StopDetailScreen(
+              stopCode: state.pathParameters['stopCode']!,
+            ),
           ),
         ),
         GoRoute(
           path: '/map',
-          builder: (context, state) => const SimulatedMapScreen(
-            routeCode: 'R-01',
-            stopCode: 'S-01',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: SimulatedMapScreen(
+              routeCode: 'R-01',
+              stopCode: 'S-01',
+            ),
           ),
         ),
         GoRoute(
           path: '/map/:routeCode/:stopCode',
-          builder: (context, state) => SimulatedMapScreen(
-            routeCode: state.pathParameters['routeCode']!,
-            stopCode: state.pathParameters['stopCode']!,
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: SimulatedMapScreen(
+              routeCode: state.pathParameters['routeCode']!,
+              stopCode: state.pathParameters['stopCode']!,
+            ),
           ),
         ),
         GoRoute(
           path: '/eta',
-          builder: (context, state) => const EtaScreen(
-            routeCode: 'R-01',
-            stopCode: 'S-01',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: EtaScreen(
+              routeCode: 'R-01',
+              stopCode: 'S-01',
+            ),
           ),
         ),
         GoRoute(
           path: '/eta/:routeCode/:stopCode',
-          builder: (context, state) => EtaScreen(
-            routeCode: state.pathParameters['routeCode']!,
-            stopCode: state.pathParameters['stopCode']!,
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: EtaScreen(
+              routeCode: state.pathParameters['routeCode']!,
+              stopCode: state.pathParameters['stopCode']!,
+            ),
           ),
         ),
         GoRoute(
           path: '/notifications',
-          builder: (context, state) => const NotificationsScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: NotificationsScreen(),
+          ),
         ),
         GoRoute(
           path: '/notification_settings',
-          builder: (context, state) => const NotificationSettingsScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: NotificationSettingsScreen(),
+          ),
         ),
         GoRoute(
           path: '/student_profile',
-          builder: (context, state) => const StudentProfileScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: StudentProfileScreen(),
+          ),
         ),
         GoRoute(
           path: '/edit_profile',
-          builder: (context, state) => const EditProfileScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: EditProfileScreen(),
+          ),
         ),
         GoRoute(
           path: '/driver_home',
-          builder: (context, state) => const DriverHomeScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: DriverHomeScreen(),
+          ),
         ),
         GoRoute(
           path: '/driver_demand',
-          builder: (context, state) => const DriverDemandScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: DriverDemandScreen(),
+          ),
         ),
         GoRoute(
           path: '/report_incident',
-          builder: (context, state) => const ReportIncidentScreen(),
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ReportIncidentScreen(),
+          ),
         ),
         GoRoute(
           path: '/facial_checkin',

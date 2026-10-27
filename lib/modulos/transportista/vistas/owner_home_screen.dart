@@ -10,6 +10,7 @@ import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class OwnerHomeScreen extends StatelessWidget {
   const OwnerHomeScreen({super.key});
@@ -297,7 +298,15 @@ class OwnerHomeScreen extends StatelessWidget {
                       text: 'MONITOREO GPS EN VIVO',
                       icon: Icons.map_rounded,
                       isCyan: true,
-                      onPressed: () => context.push('/owner_map'),
+                      onPressed: () {
+                        TransitLoadingScreen.open(
+                          context,
+                          targetRoute: '/owner_map',
+                          title: 'MAPA DE FLOTA ESCOLAR',
+                          subtitle: 'Sincronizando telemetría y geocercas con la unidad TBX-492...',
+                          badge: 'RADAR DE FLOTA GPS',
+                        );
+                      },
                     ),
                     const SizedBox(height: 24),
 

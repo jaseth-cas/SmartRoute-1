@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
-class StudentBottomBar extends StatelessWidget {
+/// Barra de navegación inferior para el perfil de Padre de Familia / Tutor.
+/// Implementa la animación física continua de pastilla deslizante inspirada en Framer Motion
+/// (`layoutId="active-pill"`, stiffness: 380, damping: 30, mass: 0.9)
+/// idéntica a la barra de conmutación del login.
+class StudentBottomBar extends StatefulWidget {
   final String currentRoute;
   final Function(String) onNavigate;
 
@@ -13,106 +16,248 @@ class StudentBottomBar extends StatelessWidget {
   });
 
   @override
+  State<StudentBottomBar> createState() => _StudentBottomBarState();
+}
+
+class _StudentBottomBarState extends State<StudentBottomBar> {
+  final List<Map<String, dynamic>> _items = const [
+    {'route': '/student_home', 'icon': Icons.home_rounded, 'label': 'Inicio'},
+    {'route': '/routes', 'icon': Icons.alt_route_rounded, 'label': 'Rutas'},
+    {'route': '/map', 'icon': Icons.explore_rounded, 'label': 'En Vivo'},
+    {'route': '/eta', 'icon': Icons.timer_outlined, 'label': 'ETA'},
+    {'route': '/notifications', 'icon': Icons.notifications_none_rounded, 'label': 'Alertas'},
+  ];
+
+  static int _globalCurrentIndex = 0;
+  static int? _globalFromIndex;
+  late int _selectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    final targetIndex = _resolveIndex(widget.currentRoute);
+
+    // Si venimos de un clic en otra pestaña de la barra, iniciamos la pastilla
+    // en la posición previa y la deslizamos de inmediato al destino.
+    if (_globalFromIndex != null && _globalFromIndex != targetIndex) {
+      _selectedIndex = _globalFromIndex!;
+      _globalFromIndex = null;
+      _globalCurrentIndex = targetIndex;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedIndex = targetIndex;
+          });
+        }
+      });
+    } else if (_globalCurrentIndex != targetIndex) {
+      _selectedIndex = _globalCurrentIndex;
+      _globalCurrentIndex = targetIndex;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedIndex = targetIndex;
+          });
+        }
+      });
+    } else {
+      _selectedIndex = targetIndex;
+      _globalCurrentIndex = targetIndex;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant StudentBottomBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentRoute != widget.currentRoute) {
+      final newIndex = _resolveIndex(widget.currentRoute);
+      if (newIndex != _selectedIndex) {
+        _globalCurrentIndex = newIndex;
+        setState(() {
+          _selectedIndex = newIndex;
+        });
+      }
+    }
+  }
+
+  int _resolveIndex(String route) {
+    if (route.startsWith('/stops') || route.startsWith('/routes')) return 1;
+    if (route.startsWith('/map')) return 2;
+    if (route.startsWith('/eta')) return 3;
+    if (route.startsWith('/notifications')) return 4;
+    return 0;
+  }
+
+  void _onTabTapped(int index, String route) {
+    if (_selectedIndex == index) return;
+
+    // Preservar la posición de origen para que el deslizamiento continuo
+    // se mantenga suave e ininterrumpido a través de la conmutación de pantalla
+    final fromIndex = _selectedIndex;
+    _globalFromIndex = fromIndex;
+    _globalCurrentIndex = index;
+
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    widget.onNavigate(route);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final items = [
-      {'route': '/student_home', 'icon': Icons.home_rounded, 'label': 'Inicio'},
-      {'route': '/routes', 'icon': Icons.alt_route_rounded, 'label': 'Rutas'},
-      {'route': '/map', 'icon': Icons.explore_rounded, 'label': 'En Vivo'},
-      {'route': '/eta', 'icon': Icons.timer_outlined, 'label': 'ETA'},
-      {'route': '/notifications', 'icon': Icons.notifications_none_rounded, 'label': 'Alertas'},
-    ];
+    const double barHeight = 58.0;
+    const double inset = 4.0;
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 6),
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 4),
         child: Align(
           alignment: Alignment.bottomCenter,
           heightFactor: 1.0,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
+            constraints: const BoxConstraints(maxWidth: 600),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              height: barHeight,
               decoration: BoxDecoration(
-                color: SmartColors.ghostWhite,
-                borderRadius: BorderRadius.circular(999), // Cápsula completa Quivox
-                boxShadow: [
-                  BoxShadow(
-                    color: SmartColors.neuLightShadow,
-                    offset: const Offset(-3, -3),
-                    blurRadius: 8,
-                    spreadRadius: 1,
-                  ),
-            BoxShadow(
-              color: SmartColors.deepBlue.withValues(alpha: 0.12),
-              offset: const Offset(3, 5),
-              blurRadius: 12,
-            ),
-          ],
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.8),
-            width: 1.2,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: items.map((item) {
-            final route = item['route'] as String;
-            final icon = item['icon'] as IconData;
-            final label = item['label'] as String;
-            final isSelected = currentRoute == route;
-
-            return GestureDetector(
-              onTap: () => onNavigate(route),
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: EdgeInsets.symmetric(
-                  horizontal: isSelected ? 14 : 10,
-                  vertical: 8,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: const Color(0xFFE5E5E9),
+                  width: 1.0,
                 ),
-                decoration: BoxDecoration(
-                  color: isSelected ? SmartColors.deepBlack : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                            offset: const Offset(0, 3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 20,
-                      color: isSelected ? SmartColors.vibrantCyan : SmartColors.smartGray,
-                    ),
-                    if (isSelected) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: SmartColors.ghostWhite,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFFFFFFFF),
+                    Color(0xFFE9E9F2),
                   ],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    offset: const Offset(0, 4),
+                    blurRadius: 14,
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    offset: const Offset(0, -1),
+                    blurRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    offset: const Offset(0, 1.5),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
-            );
-          }).toList(),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final totalWidth = constraints.maxWidth;
+                  final tabCount = _items.length;
+                  final availableWidth = totalWidth - (inset * 2);
+                  final tabWidth = availableWidth / tabCount;
+                  final pillLeft = inset + (_selectedIndex * tabWidth);
+
+                  return Stack(
+                    children: [
+                      // Pastilla continua activa deslizante (Framer Motion spring)
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 320),
+                        curve: const Cubic(0.2, 0.95, 0.22, 1.05),
+                        left: pillLeft,
+                        top: inset,
+                        bottom: inset,
+                        width: tabWidth,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF252528),
+                            borderRadius: BorderRadius.circular(999),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF252528).withValues(alpha: 0.35),
+                                offset: const Offset(0, 3),
+                                blurRadius: 8,
+                                spreadRadius: 0.5,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                offset: const Offset(0, 1),
+                                blurRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Fila de opciones con textos e iconos siempre visibles
+                      Row(
+                        children: _items.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          final route = item['route'] as String;
+                          final icon = item['icon'] as IconData;
+                          final label = item['label'] as String;
+                          final isSelected = _selectedIndex == index;
+
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: () => _onTabTapped(index, route),
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                alignment: Alignment.center,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 200),
+                                      child: Icon(
+                                        icon,
+                                        key: ValueKey('$route-$isSelected'),
+                                        size: 19,
+                                        color: isSelected
+                                            ? const Color(0xFF01BAEF)
+                                            : const Color(0xFF62625D),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    AnimatedDefaultTextStyle(
+                                      duration: const Duration(milliseconds: 200),
+                                      curve: Curves.easeInOut,
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 10.5,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        letterSpacing: 0.2,
+                                        color: isSelected
+                                            ? const Color(0xFFEDEDEC)
+                                            : const Color(0xFF62625D),
+                                      ),
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
