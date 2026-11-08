@@ -405,3 +405,27 @@ class FleetFinancialSummary {
   double get occupancyRate => totalSeats > 0 ? (occupiedSeats / totalSeats) * 100 : 0.0;
 }
 
+/// Modelo de datos para representar una institución educativa / escuela mapeada en el mapa telemático.
+class SchoolLocation {
+  final String id;
+  final String name;
+  final String shortName;
+  final double latitude;
+  final double longitude;
+  final String address;
+  final String type; // e.g. "Colegio Secundario", "Escuela Básica", etc.
+  final String? code;
+
+  const SchoolLocation({
+    required this.id,
+    required this.name,
+    required this.shortName,
+    required this.latitude,
+    required this.longitude,
+    required this.address,
+    this.type = 'Colegio',
+    this.code,
+  });
+}
+
+

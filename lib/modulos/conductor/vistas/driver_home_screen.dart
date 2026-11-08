@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
@@ -9,9 +13,8 @@ import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
-import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
-import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/widgets/user_options_bar.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -20,9 +23,223 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-class _DriverHomeScreenState extends State<DriverHomeScreen> {
-  String routeStatus = "En recorrido";
+class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerProviderStateMixin {
+  final MapController _mapController = MapController();
+  double _currentZoom = 16.2;
+  bool _showSchools = true;
+  SchoolLocation? _selectedSchool;
+  bool _isExpanded = false;
   bool gpsActive = true;
+
+  // Monitor CCTV retrovisor interior en vivo
+  bool _isCameraExpanded = true;
+  int _activeCamIndex = 0;
+  bool _isCameraMuted = false;
+  Timer? _clockTimer;
+  String _liveClock = '07:14:28';
+  final List<String> _cameraAngles = const [
+    'CAM-01 [PASILLO]',
+    'CAM-02 [PUERTA]',
+    'CAM-03 [CABINA]',
+  ];
+
+  // Motor de navegación en vivo: movimiento fluido y seguimiento de cámara suave
+  late AnimationController _navController;
+  LatLng _currentBusPos = const LatLng(8.5270, -80.3512);
+  double _currentBearing = -160.0;
+  int _currentSegmentIndex = 0;
+  double _currentSpeed = 38.0;
+  bool _isAutoTracking = true;
+  DateTime _lastCameraMoveTime = DateTime.fromMillisecondsSinceEpoch(0);
+  List<double> _segmentDistances = [];
+  double _totalDistance = 0.0;
+
+  // Ruta 1: Desde la Casa del Estudiante hasta la Parada de Recogida (Ruta de acceso en Vía Cristo Rey)
+  final List<LatLng> studentWalkPath = const [
+    LatLng(8.5284, -80.3582), // Casa del Estudiante
+    LatLng(8.5281, -80.3565),
+    LatLng(8.5289, -80.3551),
+    LatLng(8.5268, -80.3533),
+    LatLng(8.5242, -80.3522), // Parada en Vía hacia Sonadora
+  ];
+
+  // Ruta 2: Recorrido del Autobús Colegial en vivo (Vía hacia Sonadora -> Colegio San José)
+  final List<LatLng> schoolBusPath = const [
+    LatLng(8.5270, -80.3512), // Origen ruta colegial
+    LatLng(8.5242, -80.3522), // Parada de recogida del estudiante
+    LatLng(8.5215, -80.3532), // Vía hacia Sonadora
+    LatLng(8.5186, -80.3541), // Vía hacia Sonadora sur
+    LatLng(8.5172, -80.3540), // Giro de acceso a barriada escolar
+    LatLng(8.5160, -80.3522), // Calle de conexión
+    LatLng(8.5146, -80.3508), // Avenida escolar
+    LatLng(8.5156, -80.3500), // Acceso vehicular
+    LatLng(8.5154, -80.3482), // Colegio San José (Destino)
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _initDistances();
+    _currentBusPos = schoolBusPath.first;
+    _updateClock();
+
+    // Reloj en vivo de telemetría CCTV
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _updateClock());
+    });
+
+    // Animador de desplazamiento continuo y suave (duración calibrada para velocidad realista de colegial)
+    _navController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 45),
+    )..addListener(_onNavTick)
+     ..addStatusListener((status) {
+       if (status == AnimationStatus.completed) {
+         _navController.forward(from: 0.0);
+       }
+     });
+
+    _navController.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerOnBus();
+    });
+  }
+
+  void _updateClock() {
+    final now = DateTime.now();
+    _liveClock = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    _navController.dispose();
+    super.dispose();
+  }
+
+  void _initDistances() {
+    _segmentDistances = [];
+    _totalDistance = 0.0;
+    for (int i = 0; i < schoolBusPath.length - 1; i++) {
+      final d = _calculateDistance(schoolBusPath[i], schoolBusPath[i + 1]);
+      _segmentDistances.add(d);
+      _totalDistance += d;
+    }
+  }
+
+  double _calculateDistance(LatLng p1, LatLng p2) {
+    final latAvg = (p1.latitude + p2.latitude) / 2 * math.pi / 180;
+    final dy = (p2.latitude - p1.latitude) * 111320;
+    final dx = (p2.longitude - p1.longitude) * 111320 * math.cos(latAvg);
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  ({LatLng position, double bearing, int segmentIndex}) _interpolateNavPosition(double progress) {
+    if (_segmentDistances.isEmpty || _totalDistance == 0) {
+      return (position: schoolBusPath.first, bearing: -160.0, segmentIndex: 0);
+    }
+    final targetDistance = progress * _totalDistance;
+    double accum = 0.0;
+
+    for (int i = 0; i < _segmentDistances.length; i++) {
+      final d = _segmentDistances[i];
+      if (accum + d >= targetDistance || i == _segmentDistances.length - 1) {
+        final segT = d > 0 ? ((targetDistance - accum) / d).clamp(0.0, 1.0) : 0.0;
+        final p1 = schoolBusPath[i];
+        final p2 = schoolBusPath[i + 1];
+        final lat = p1.latitude + segT * (p2.latitude - p1.latitude);
+        final lon = p1.longitude + segT * (p2.longitude - p1.longitude);
+        final bearing = math.atan2(p2.longitude - p1.longitude, p2.latitude - p1.latitude) * 180 / math.pi;
+        return (position: LatLng(lat, lon), bearing: bearing, segmentIndex: i);
+      }
+      accum += d;
+    }
+    return (position: schoolBusPath.last, bearing: 0.0, segmentIndex: _segmentDistances.length - 1);
+  }
+
+  void _onNavTick() {
+    if (!mounted) return;
+    final navData = _interpolateNavPosition(_navController.value);
+
+    setState(() {
+      _currentBusPos = navData.position;
+      _currentBearing = navData.bearing;
+      _currentSegmentIndex = navData.segmentIndex;
+      // Fluctuación realista de velocidad urbana entre 33 y 41 km/h
+      _currentSpeed = 37.0 + math.sin(_navController.value * 28 * math.pi) * 3.8;
+    });
+
+    // Seguimiento suave del mapa de la ubicación del vehículo (limitado a ~12 FPS de cámara para rendimiento óptimo)
+    if (_isAutoTracking) {
+      final now = DateTime.now();
+      if (now.difference(_lastCameraMoveTime).inMilliseconds >= 80) {
+        _lastCameraMoveTime = now;
+        _mapController.move(_currentBusPos, _currentZoom);
+      }
+    }
+  }
+
+  String _getNavigationInstruction(int segmentIndex) {
+    switch (segmentIndex) {
+      case 0:
+        return "Avanza por Vía hacia Sonadora hacia Parada de recogida";
+      case 1:
+        return "Próxima detención: Parada Asignada (Estudiantes esperan)";
+      case 2:
+        return "Continúa recto por Vía hacia Sonadora (950 m)";
+      case 3:
+        return "En 120 m: Gira a la izquierda hacia Barriada Escolar";
+      case 4:
+        return "Giro completado: Ingrese por Calle de Conexión";
+      case 5:
+        return "Avanza por Avenida Escolar (320 m)";
+      case 6:
+        return "En 80 m: Gira a la derecha hacia Acceso Vehicular";
+      case 7:
+        return "Destino en 120 m: Colegio San José a la derecha";
+      default:
+        return "Ruta hacia Colegio San José";
+    }
+  }
+
+  IconData _getManeuverIcon(int segmentIndex) {
+    switch (segmentIndex) {
+      case 3:
+      case 4:
+        return Icons.turn_left_rounded;
+      case 6:
+        return Icons.turn_right_rounded;
+      case 7:
+        return Icons.school_rounded;
+      case 1:
+        return Icons.directions_bus_rounded;
+      default:
+        return Icons.straight_rounded;
+    }
+  }
+
+  void _zoomIn() {
+    setState(() {
+      _currentZoom = math.min(_currentZoom + 1.0, 18.5);
+      _mapController.move(_currentBusPos, _currentZoom);
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _currentZoom = math.max(_currentZoom - 1.0, 11.0);
+      _mapController.move(_currentBusPos, _currentZoom);
+    });
+  }
+
+  void _centerOnBus() {
+    setState(() {
+      _isAutoTracking = true;
+      _currentZoom = 16.4;
+    });
+    _mapController.move(_currentBusPos, _currentZoom);
+  }
 
   void _openFacialScanner() {
     context.push('/facial_checkin').then((_) {
@@ -43,373 +260,1460 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
-      appBar: AppBar(
-        title: Text(
-          'CABINA CONDUCIDA // TELEMETRÍA',
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: SmartColors.deepBlack,
+      body: Stack(
+        children: [
+          // 1. Mapa Interactivo Completo de borde a borde (Ocupa toda la ventana de arriba a abajo)
+          Positioned.fill(
+            child: _buildDriverMap(bus),
           ),
-        ),
-        backgroundColor: SmartColors.neuBackground,
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14.0),
+
+          // 2. Cabina Conductor (Alineada en la esquina superior izquierda)
+          Positioned(
+            top: 16,
+            left: 16,
+            child: _buildDriverHeaderPill(session?.name ?? "Juan Pérez", bus),
+          ),
+
+          // 3. Componentes del Lateral Superior Derecho: GPS Navegación Activa y Opciones de Usuario
+          // Los botones tienen exactamente el mismo tamaño (42x42) y las notificaciones quedan justo encima del botón '+'
+          Positioned(
+            top: 16,
+            right: 16,
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
-                    color: gpsActive ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
-                    shape: BoxShape.circle,
+                    color: SmartColors.neuInset,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: SmartColors.deepBlack.withValues(alpha: 0.12),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: gpsActive ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'GPS NAVEGACIÓN ACTIVA',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: SmartColors.deepBlue,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
+                const UserAppBarActions(
+                  buttonSize: 42,
+                  noTrailingPadding: true,
+                ),
+              ],
+            ),
+          ),
+
+          // 4. Panel de Retroalimentación en Vivo: Cámara Interna del Autobús (CCTV Retrovisor AI)
+          if (_isCameraExpanded)
+            Positioned(
+              top: 72,
+              right: 76,
+              child: _buildLiveCCTVCameraPanel(bus),
+            ),
+
+          // 5. Botón de Alerta / Reanudar Seguimiento si el conductor movió el mapa manualmente
+          if (!_isAutoTracking)
+            Positioned(
+              top: 16,
+              left: 340,
+              child: _buildResumeTrackingPill(),
+            ),
+
+          // 6. Controles Flotantes del Mapa (Derecha debajo de las acciones de usuario, con el '+' justo debajo de la campana)
+          Positioned(
+            top: 72,
+            right: 16,
+            child: _buildMapFloatingControls(),
+          ),
+
+          // 7. Ficha de Colegio Seleccionado (si se seleccionó un punto rojo)
+          if (_selectedSchool != null)
+            Positioned(
+              top: 146,
+              left: 16,
+              right: 16,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 500),
+                  child: _buildSelectedSchoolOverlay(),
+                ),
+              ),
+            ),
+
+          // 8. Barra Reducida del Conductor (Próxima parada, métricas y manifiesto) flotando sobre el mapa
+          Positioned(
+            bottom: 84,
+            left: 14,
+            right: 14,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: _buildReducedDriverBottomBar(
+                  bus: bus,
+                  onboardCount: onboardCount,
+                  absentCount: absentCount,
+                ),
+              ),
+            ),
+          ),
+
+          // 9. Barra de opciones de navegación (Ruta, Alumnos, Incidente) flotando directamente sobre el mapa sin fondo blanco
+          Positioned(
+            bottom: 6,
+            left: 20,
+            right: 20,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: DriverBottomBar(
+                currentRoute: '/driver_home',
+                onNavigate: (route) => context.go(route),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // MAPA INTERACTIVO CON POLILÍNEAS Y NAVEGACIÓN
+  // ==========================================
+  Widget _buildDriverMap(dynamic bus) {
+    // Cálculo de polilíneas: camino recorrido vs camino restante adelante (Guía visual)
+    final traveledPoints = <LatLng>[
+      ...schoolBusPath.sublist(0, _currentSegmentIndex + 1),
+      _currentBusPos,
+    ];
+
+    final remainingPoints = <LatLng>[
+      _currentBusPos,
+      ...schoolBusPath.sublist(_currentSegmentIndex + 1),
+    ];
+
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: _currentBusPos,
+        initialZoom: _currentZoom,
+        minZoom: 11.0,
+        maxZoom: 18.5,
+        onPositionChanged: (camera, hasGesture) {
+          if (hasGesture && _isAutoTracking) {
+            setState(() {
+              _isAutoTracking = false;
+            });
+          }
+        },
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.smartroute.smartroute_flutter',
+        ),
+        // Polilíneas de navegación activa:
+        // 1. Ruta de acceso peatonal del estudiante
+        // 2. Tramo ya recorrido por el bus (atenuado)
+        // 3. Tramo a seguir iluminado en cian brillante (guía para el conductor)
+        PolylineLayer(
+          polylines: [
+            // Ruta del Estudiante (Casa -> Parada)
+            Polyline(
+              points: studentWalkPath,
+              color: SmartColors.primaryCrimson.withValues(alpha: 0.25),
+              strokeWidth: 8.0,
+            ),
+            Polyline(
+              points: studentWalkPath,
+              color: SmartColors.primaryCrimson,
+              strokeWidth: 4.5,
+            ),
+
+            // Tramo ya recorrido del Bus (en azul noche atenuado)
+            if (traveledPoints.length >= 2) ...[
+              Polyline(
+                points: traveledPoints,
+                color: SmartColors.deepBlue.withValues(alpha: 0.35),
+                strokeWidth: 6.0,
+              ),
+            ],
+
+            // Tramo por recorrer (Camino a seguir iluminado con halo brillante)
+            if (remainingPoints.length >= 2) ...[
+              Polyline(
+                points: remainingPoints,
+                color: SmartColors.vibrantCyan.withValues(alpha: 0.35),
+                strokeWidth: 10.0,
+              ),
+              Polyline(
+                points: remainingPoints,
+                color: SmartColors.vibrantCyan,
+                strokeWidth: 5.5,
+              ),
+            ],
+          ],
+        ),
+        MarkerLayer(
+          markers: [
+            // Marcador 1: Casa del Estudiante
+            Marker(
+              point: studentWalkPath.first,
+              width: 130,
+              height: 56,
+              child: _buildLocationPin(
+                title: "CASA DE MATEO",
+                subtitle: "Salida 06:45 AM",
+                icon: Icons.home_rounded,
+                pinColor: SmartColors.primaryCrimson,
+              ),
+            ),
+
+            // Marcador 2: Parada de Recogida
+            Marker(
+              point: studentWalkPath.last,
+              width: 140,
+              height: 56,
+              child: _buildLocationPin(
+                title: "PARADA ASIGNADA",
+                subtitle: "Vía Sonadora // 07:05 AM",
+                icon: Icons.directions_bus_rounded,
+                pinColor: SmartColors.deepBlue,
+              ),
+            ),
+
+            // Marcador 3: Colegio San José (Destino Escolar)
+            Marker(
+              point: schoolBusPath.last,
+              width: 130,
+              height: 56,
+              child: _buildLocationPin(
+                title: "COLEGIO SAN JOSÉ",
+                subtitle: "Llegada 07:20 AM",
+                icon: Icons.school_rounded,
+                pinColor: SmartColors.smartGreen,
+              ),
+            ),
+
+            // Marcador 4: Vehículo Colegial con Movimiento Fluido y Orientación de Rumbo
+            Marker(
+              point: _currentBusPos,
+              width: 180,
+              height: 96,
+              child: _buildSmoothNavigationBusMarker(
+                code: bus?.code ?? "BUS-01",
+                speed: _currentSpeed,
+                bearing: _currentBearing,
+              ),
+            ),
+
+            // Marcadores de los 9 Colegios y Escuelas de Penonomé mapeados con Punto Rojo
+            if (_showSchools)
+              ...MockData.penonomeSchools.map((school) {
+                final isSelected = _selectedSchool?.id == school.id;
+                return Marker(
+                  point: LatLng(school.latitude, school.longitude),
+                  width: 140,
+                  height: 52,
+                  child: _buildSchoolRedPointMarker(school, isSelected: isSelected),
+                );
+              }),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // MARCADOR CON MOVIMIENTO FLUIDO Y RUMBO
+  // ==========================================
+  Widget _buildSmoothNavigationBusMarker({
+    required String code,
+    required double speed,
+    required double bearing,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Píldora de Telemetría: Código de Bus + Velocidad en vivo
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: SmartColors.deepBlack,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: SmartColors.vibrantCyan, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.35),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6.5,
+                height: 6.5,
+                decoration: const BoxDecoration(
+                  color: SmartColors.vibrantCyan,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '$code • ${speed.toStringAsFixed(0)} KM/H',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.ghostWhite,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 3),
+        // Núcleo del Vehículo que rota exactamente en la dirección de la calle
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Halo concéntrico de radar telemático
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: SmartColors.vibrantCyan.withValues(alpha: 0.22),
+              ),
+            ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: SmartColors.deepBlue.withValues(alpha: 0.28),
+              ),
+            ),
+            // Disco central del vehículo con flecha direccional orientada al rumbo
+            Transform.rotate(
+              angle: bearing * math.pi / 180,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: SmartColors.deepBlue,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SmartColors.deepBlack.withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.navigation_rounded,
+                  color: SmartColors.vibrantCyan,
+                  size: 20,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // PANEL DE GUÍA TURN-BY-TURN ESTILO WAZE
+  // ==========================================
+  Widget _buildTurnByTurnNavigationBanner() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 360),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: SmartColors.deepBlack,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: SmartColors.deepBlack.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: SmartColors.vibrantCyan.withValues(alpha: 0.4), width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: SmartColors.vibrantCyan.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _getManeuverIcon(_currentSegmentIndex),
+              color: SmartColors.vibrantCyan,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Text(
-                  'GPS ACTIVO',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9.5,
+                  _getNavigationInstruction(_currentSegmentIndex),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w800,
-                    color: SmartColors.deepBlue,
+                    color: SmartColors.ghostWhite,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Row(
+                  children: [
+                    Text(
+                      '${_currentSpeed.toStringAsFixed(0)} KM/H',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.vibrantCyan,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '• DESTINO: COL. SAN JOSÉ',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                          color: SmartColors.smartGray,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
       ),
-      bottomNavigationBar: DriverBottomBar(
-        currentRoute: '/driver_home',
-        onNavigate: (route) => context.go(route),
+    );
+  }
+
+  Widget _buildResumeTrackingPill() {
+    return GestureDetector(
+      onTap: _centerOnBus,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: SmartColors.primaryCrimson,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: SmartColors.primaryCrimson.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              'REANUDAR SEGUIMIENTO',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
       ),
-      body: SafeArea(
-        child: ResponsiveContent(
-          maxWidth: 1040,
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Perfil Conductor Esculpido (ancho completo)
-                NeumorphicBox(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  borderRadius: BorderRadius.circular(24),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: SmartColors.deepBlue.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.airline_seat_recline_normal_rounded, color: SmartColors.deepBlue, size: 26),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'CONDUCTOR ASIGNADO',
-                              style: GoogleFonts.jetBrainsMono(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.0,
-                                color: SmartColors.smartGray,
-                              ),
-                            ),
-                            Text(
-                              session?.name ?? "Juan Pérez",
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: SmartColors.deepBlack,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                            Text(
-                              '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                color: SmartColors.deepBlue,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StatusChip(text: bus.status),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
+    );
+  }
 
-                // Distribución 2 columnas fluida en Tablet/Desktop, 1 columna en móvil
-                ResponsiveTwoColumns(
-                  breakpoint: 800,
-                  spacing: 20,
-                  left: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Sello Trust & Safety
-                      NeumorphicBox(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: SmartColors.vibrantCyan.withValues(alpha: 0.15),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.verified_user_rounded, color: SmartColors.deepBlue, size: 20),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'SELLO TRUST & SAFETY CERTIFICADO',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.5,
-                                      color: SmartColors.deepBlack,
-                                    ),
-                                  ),
-                                  Text(
-                                    'RTM, Antecedentes y Pólizas escolares al día',
-                                    style: GoogleFonts.plusJakartaSans(fontSize: 11, color: SmartColors.smartGray),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+  // ==========================================
+  // PANEL DE RETROALIMENTACIÓN: CÁMARA INTERIOR EN VIVO
+  // ==========================================
+  Widget _buildLiveCCTVCameraPanel(dynamic bus) {
+    if (!_isCameraExpanded) {
+      return const SizedBox.shrink();
+    }
+
+    // Estado expandido: monitor CCTV en vivo ubicado en el panel derecho del mapa
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: NeumorphicBox(
+        padding: const EdgeInsets.all(6),
+        borderRadius: BorderRadius.circular(18),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            color: Colors.black,
+            child: AspectRatio(
+              aspectRatio: 16 / 9.4,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    'assets/images/bus_interior_cctv.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: SmartColors.deepBlack,
+                        child: const Center(
+                          child: Icon(Icons.videocam_rounded, color: SmartColors.vibrantCyan, size: 36),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Alerta de Ausencias Reportadas (Ahorro de Ruta)
-                      if (absentCount > 0) ...[
-                        NeumorphicBox(
-                          isCrimson: false,
-                          padding: const EdgeInsets.all(18),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: SmartColors.primaryCrimson.withValues(alpha: 0.4), width: 1.5),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: SmartColors.primaryCrimson.withValues(alpha: 0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.notifications_active_rounded, color: SmartColors.primaryCrimson, size: 22),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '$absentCount AUSENCIA NOTIFICADA HOY',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 12.5,
-                                        letterSpacing: 0.4,
-                                        color: SmartColors.primaryCrimson,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Parada omitida automáticamente. Trayecto optimizado (-10 min).',
-                                      style: GoogleFonts.plusJakartaSans(fontSize: 11.5, color: SmartColors.smartGray),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Próxima Parada
-                      NeumorphicBox(
-                        padding: const EdgeInsets.all(18),
-                        borderRadius: BorderRadius.circular(22),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'PRÓXIMA PARADA',
-                              style: GoogleFonts.jetBrainsMono(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.0,
-                                color: SmartColors.smartGray,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Colegio San José - Puerta 1',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                color: SmartColors.deepBlack,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Calle 127 # 45-20 • 2 Estudiantes esperan',
-                              style: GoogleFonts.plusJakartaSans(fontSize: 11.5, color: SmartColors.deepBlue),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  right: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Métricas de Pasajeros Quivox ("12/34", "10")
-                      Row(
-                        children: [
-                          Expanded(
-                            child: NeumorphicBox(
-                              padding: const EdgeInsets.all(18),
-                              borderRadius: BorderRadius.circular(22),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'A BORDO AHORA',
-                                    style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w800, color: SmartColors.smartGray),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '$onboardCount',
-                                    style: GoogleFonts.jetBrainsMono(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w900,
-                                      color: SmartColors.deepBlack,
-                                    ),
-                                  ),
-                                  Text(
-                                    'ALUMNOS CONFIRMADOS',
-                                    style: GoogleFonts.jetBrainsMono(fontSize: 9, fontWeight: FontWeight.w700, color: SmartColors.deepBlue),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: NeumorphicBox(
-                              padding: const EdgeInsets.all(18),
-                              borderRadius: BorderRadius.circular(22),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'OCUPACIÓN DE CUPOS',
-                                    style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w800, color: SmartColors.smartGray),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${bus.seatsOccupied}/${bus.capacity}',
-                                    style: GoogleFonts.jetBrainsMono(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w900,
-                                      color: SmartColors.deepBlack,
-                                    ),
-                                  ),
-                                  Text(
-                                    'ASIENTOS REGISTRADOS',
-                                    style: GoogleFonts.jetBrainsMono(fontSize: 9, fontWeight: FontWeight.w700, color: SmartColors.deepBlue),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Botón de Terminal Facial AI
-                      PrimaryButton(
-                        text: 'TERMINAL FACIAL AI (ABORDAJE)',
-                        icon: Icons.face_retouching_natural_rounded,
-                        onPressed: _openFacialScanner,
-                      ),
-                      const SizedBox(height: 12),
-
-                      GestureDetector(
-                        onTap: () => context.go('/driver_demand'),
-                        child: Container(
-                          height: 52,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: SmartColors.neuInset,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.format_list_numbered_rounded, color: SmartColors.deepBlue, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'VER MANIFIESTO DE ESTUDIANTES',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.5,
-                                  letterSpacing: 0.8,
-                                  color: SmartColors.deepBlack,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Cerrar Sesión centrado
-                Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      sessionManager.logout();
-                      context.go('/login');
+                      );
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                      child: Text(
-                        'CERRAR SESIÓN',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                          color: SmartColors.primaryCrimson,
-                        ),
+                  ),
+
+                  // Gradientes de contraste para datos HUD
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.65),
+                          Colors.transparent,
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.75),
+                        ],
+                        stops: const [0.0, 0.25, 0.75, 1.0],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 36),
-              ],
+
+                  // HUD Superior: LIVE + REC 1080p (izquierda) | CAM-01 + Tiempo + Minimizar (derecha)
+                  Positioned(
+                    top: 8,
+                    left: 10,
+                    right: 10,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Lado izquierdo: [LIVE] badge + [• REC 1080p]
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: SmartColors.primaryCrimson,
+                                borderRadius: BorderRadius.circular(4.5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 4.5,
+                                    height: 4.5,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3.5),
+                                  Text(
+                                    'LIVE',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 6.5,
+                              height: 6.5,
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'REC 1080p',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                shadows: const [Shadow(blurRadius: 3, color: Colors.black)],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Lado derecho: CAM-01 [PASILLO] + Tiempo (reloj en vivo) + Minimizar
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.white24, width: 0.6),
+                              ),
+                              child: Text(
+                                _cameraAngles[_activeCamIndex],
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: SmartColors.vibrantCyan,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.white24, width: 0.6),
+                              ),
+                              child: Text(
+                                _liveClock,
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            GestureDetector(
+                              onTap: () => setState(() => _isCameraExpanded = false),
+                              child: Container(
+                                padding: const EdgeInsets.all(3.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white24, width: 0.6),
+                                ),
+                                child: const Icon(
+                                  Icons.close_fullscreen_rounded,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // HUD Inferior: Situación de cabina y ocupación de estudiantes
+                  Positioned(
+                    bottom: 8,
+                    left: 10,
+                    right: 10,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${bus.seatsOccupied ?? 8}/${bus.capacity ?? 14} ALUMNOS • CABINA OK',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            shadows: const [Shadow(blurRadius: 3, color: Colors.black)],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: SmartColors.smartGreen.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'NORMAL',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // BARRA CENTRAL INFERIOR REDUCIDA DEL CONDUCTOR
+  // ==========================================
+  Widget _buildReducedDriverBottomBar({
+    required dynamic bus,
+    int? onboardCount,
+    int? absentCount,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 640;
+
+        return NeumorphicBox(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          borderRadius: BorderRadius.circular(24),
+          child: isNarrow
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Fila superior: Próxima parada
+                    Row(
+                      children: [
+                        _buildStopIcon(),
+                        const SizedBox(width: 10),
+                        Expanded(child: _buildNextStopInfo()),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Fila inferior: Aviso de dirección turn-by-turn
+                    _buildTurnByTurnNavigationBanner(),
+                  ],
+                )
+              : Row(
+                  children: [
+                    // 1. Icono y Próxima Parada
+                    _buildStopIcon(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 5,
+                      child: _buildNextStopInfo(),
+                    ),
+
+                    const SizedBox(width: 14),
+
+                    // 2. Aviso de Dirección Turn-by-Turn Integrado (reemplazando métricas y manifiesto)
+                    Expanded(
+                      flex: 6,
+                      child: _buildTurnByTurnNavigationBanner(),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStopIcon() {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: SmartColors.deepBlue.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: const Center(
+        child: Icon(Icons.location_on_rounded, color: SmartColors.deepBlue, size: 20),
+      ),
+    );
+  }
+
+  Widget _buildNextStopInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text(
+              'PRÓXIMA PARADA',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 8.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                color: SmartColors.smartGray,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: SmartColors.smartLightGreen,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'EN RUTA',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 7.5,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.smartGreen,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Colegio San José - Puerta 1',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: SmartColors.deepBlack,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Text(
+          'Calle 127 # 45-20 • 2 Estudiantes esperan',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w500,
+            color: SmartColors.deepBlue,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String sub,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: SmartColors.neuInset,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: SmartColors.deepBlack,
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                label,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 7.5,
+                  fontWeight: FontWeight.w700,
+                  color: SmartColors.smartGray,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAbsentMiniBadge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: SmartColors.primaryCrimson.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.notifications_active_rounded, size: 14, color: SmartColors.primaryCrimson),
+          const SizedBox(width: 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$count AUSENCIA',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  color: SmartColors.primaryCrimson,
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                '-10 MIN HOY',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 7,
+                  fontWeight: FontWeight.w700,
+                  color: SmartColors.primaryCrimson,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFacialScannerButton() {
+    return GestureDetector(
+      onTap: _openFacialScanner,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: SmartColors.deepBlack,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: SmartColors.deepBlack.withValues(alpha: 0.25),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.face_retouching_natural_rounded, color: SmartColors.vibrantCyan, size: 16),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'TERMINAL FACIAL AI',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.ghostWhite,
+                  letterSpacing: 0.5,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManifestButton() {
+    return GestureDetector(
+      onTap: () => context.go('/driver_demand'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: SmartColors.neuInset,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.format_list_numbered_rounded, color: SmartColors.deepBlue, size: 15),
+            const SizedBox(width: 5),
+            Text(
+              'MANIFIESTO',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: SmartColors.deepBlack,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandToggleButton() {
+    return GestureDetector(
+      onTap: () => setState(() => _isExpanded = !_isExpanded),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: SmartColors.neuInset,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          _isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+          size: 20,
+          color: SmartColors.deepBlack,
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // COMPONENTES FLOTANTES DEL CONDUCTOR & MAPA
+  // ==========================================
+  Widget _buildDriverHeaderPill(String driverName, dynamic bus) {
+    return GestureDetector(
+      onTap: _centerOnBus,
+      child: NeumorphicBox(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        borderRadius: BorderRadius.circular(20),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: SmartColors.deepBlue.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.airline_seat_recline_normal_rounded, color: SmartColors.deepBlue, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'CONDUCTOR ASIGNADO',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: SmartColors.smartGray,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: _isAutoTracking
+                            ? SmartColors.vibrantCyan.withValues(alpha: 0.18)
+                            : SmartColors.primaryCrimson.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _isAutoTracking ? 'GPS ACTIVO' : 'PAUSADO',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 7.5,
+                          fontWeight: FontWeight.w800,
+                          color: _isAutoTracking ? SmartColors.deepBlue : SmartColors.primaryCrimson,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  driverName,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+                Text(
+                  '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.deepBlue,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            StatusChip(text: bus.status),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapFloatingControls() {
+    return Column(
+      children: [
+        _buildColumnButton(
+          icon: Icons.add_rounded,
+          onTap: _zoomIn,
+          iconColor: SmartColors.deepBlack,
+        ),
+        const SizedBox(height: 8),
+        _buildColumnButton(
+          icon: Icons.remove_rounded,
+          onTap: _zoomOut,
+          iconColor: SmartColors.deepBlack,
+        ),
+        const SizedBox(height: 10),
+        _buildColumnButton(
+          icon: _isAutoTracking ? Icons.navigation_rounded : Icons.my_location_rounded,
+          onTap: _centerOnBus,
+          isDark: _isAutoTracking,
+          iconColor: _isAutoTracking ? SmartColors.vibrantCyan : SmartColors.deepBlack,
+        ),
+        const SizedBox(height: 8),
+        _buildColumnButton(
+          icon: Icons.school_rounded,
+          onTap: () {
+            setState(() {
+              _showSchools = !_showSchools;
+            });
+          },
+          iconColor: _showSchools ? SmartColors.primaryCrimson : SmartColors.smartGray,
+        ),
+        const SizedBox(height: 8),
+        _buildColumnButton(
+          icon: Icons.videocam_rounded,
+          onTap: () {
+            setState(() {
+              _isCameraExpanded = !_isCameraExpanded;
+            });
+          },
+          iconColor: _isCameraExpanded ? SmartColors.primaryCrimson : SmartColors.deepBlack,
+        ),
+        const SizedBox(height: 12),
+        // Botón Terminal Facial AI debajo de la columna de controles del mapa
+        Tooltip(
+          message: 'Terminal Facial AI (Abordaje)',
+          child: _buildColumnButton(
+            icon: Icons.face_retouching_natural_rounded,
+            onTap: _openFacialScanner,
+            isDark: true,
+            iconColor: SmartColors.vibrantCyan,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildColumnButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? iconColor,
+    bool isDark = false,
+  }) {
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: NeumorphicBox(
+        isPill: true,
+        isDark: isDark,
+        padding: EdgeInsets.zero,
+        onTap: onTap,
+        child: Center(
+          child: Icon(icon, size: 19, color: iconColor ?? SmartColors.deepBlack),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedSchoolOverlay() {
+    final school = _selectedSchool!;
+    return NeumorphicBox(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      borderRadius: BorderRadius.circular(20),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: SmartColors.primaryCrimson, width: 1.5),
+            ),
+            child: const Center(
+              child: Icon(Icons.school_rounded, color: SmartColors.primaryCrimson, size: 18),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: SmartColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'PUNTO ROJO // PENONOMÉ',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.primaryCrimson,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  school.name,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  school.address,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: SmartColors.smartGray,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () {
+              setState(() => _isAutoTracking = false);
+              _mapController.move(LatLng(school.latitude, school.longitude), 17.2);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: SmartColors.deepBlack,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.my_location_rounded, size: 14, color: SmartColors.vibrantCyan),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => setState(() => _selectedSchool = null),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: SmartColors.neuInset,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close_rounded, size: 16, color: SmartColors.smartGray),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationPin({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color pinColor,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: SmartColors.ghostWhite,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.18),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+            border: Border.all(color: pinColor.withValues(alpha: 0.4), width: 1),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.deepBlack,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 7.5,
+                  fontWeight: FontWeight.w600,
+                  color: SmartColors.smartGray,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: pinColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 12, color: Colors.white),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSchoolRedPointMarker(SchoolLocation school, {bool isSelected = false}) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedSchool = school;
+          _isAutoTracking = false;
+        });
+        _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: isSelected ? SmartColors.deepBlack : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: SmartColors.primaryCrimson,
+                width: isSelected ? 1.8 : 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: SmartColors.primaryCrimson.withValues(alpha: isSelected ? 0.35 : 0.20),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5.5,
+                  height: 5.5,
+                  decoration: const BoxDecoration(
+                    color: SmartColors.primaryCrimson,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    school.shortName,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson.withValues(alpha: 0.25),
+                ),
+              ),
+              Container(
+                width: 13,
+                height: 13,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson,
+                  border: Border.all(color: Colors.white, width: 2.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SmartColors.primaryCrimson.withValues(alpha: 0.65),
+                      blurRadius: 5,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

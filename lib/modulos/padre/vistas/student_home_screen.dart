@@ -14,6 +14,7 @@ import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/widgets/user_options_bar.dart';
 import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class StudentHomeScreen extends StatefulWidget {
@@ -67,32 +68,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               ),
             ],
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: NeumorphicBox(
-                padding: EdgeInsets.zero,
-                isPill: true,
-                child: IconButton(
-                  icon: const Icon(Icons.person_outline_rounded, color: SmartColors.deepBlue, size: 20),
-                  onPressed: () => context.push('/student_profile'),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 14.0),
-              child: NeumorphicBox(
-                padding: EdgeInsets.zero,
-                isPill: true,
-                child: IconButton(
-                  icon: const Badge(
-                    backgroundColor: SmartColors.primaryCrimson,
-                    child: Icon(Icons.notifications_none_rounded, color: SmartColors.deepBlack, size: 20),
-                  ),
-                  onPressed: () => context.go('/notifications'),
-                ),
-              ),
-            ),
+          actions: const [
+            UserAppBarActions(),
           ],
           backgroundColor: SmartColors.neuBackground,
           elevation: 0,
@@ -372,7 +349,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                             context.push('/route_detail/${defaultRoute.code}');
                           }
                         },
-                        child: _buildEtaCard(defaultRoute, defaultStop, student, isAbsent),
+                        child: _EtaProgressCard(
+                          defaultRoute: defaultRoute,
+                          defaultStop: defaultStop,
+                          student: student,
+                          isAbsent: isAbsent,
+                        ),
                       ),
                       const SizedBox(height: 20),
 
@@ -453,364 +435,332 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       ),
     );
   }
-
-  Widget _buildEtaCard(
-    RouteMock? defaultRoute,
-    StopMock? defaultStop,
-    StudentPassengerMock student,
-    bool isAbsent,
-  ) {
-    return NeumorphicBox(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
-      borderRadius: BorderRadius.circular(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Fila Superior: Icono de Bus en relieve suave, Título de la Ruta y Botón Chevron
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: SmartColors.ghostWhite,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: SmartColors.neuLightShadow,
-                      offset: const Offset(-2, -2),
-                      blurRadius: 5,
-                    ),
-                    BoxShadow(
-                      color: SmartColors.deepBlue.withValues(alpha: 0.08),
-                      offset: const Offset(2, 3),
-                      blurRadius: 6,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.directions_bus_rounded,
-                  color: Color(0xFF6B7C8E),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  defaultRoute?.name ?? 'Ruta Escolar Norte – Col. San José',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF101828),
-                    letterSpacing: -0.2,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: SmartColors.ghostWhite,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: SmartColors.neuLightShadow,
-                      offset: const Offset(-2, -2),
-                      blurRadius: 4,
-                    ),
-                    BoxShadow(
-                      color: SmartColors.deepBlue.withValues(alpha: 0.08),
-                      offset: const Offset(2, 2.5),
-                      blurRadius: 5,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFF334155),
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Contador Central: Número 5 gigante y texto MIN
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                isAbsent ? '--' : '${defaultRoute?.etaMinutes ?? 5}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 68,
-                  fontWeight: FontWeight.w900,
-                  color: isAbsent ? SmartColors.smartGray : const Color(0xFF0F172A),
-                  letterSpacing: -2.5,
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'MIN',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: const Color(0xFF1E3A52),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-
-          // Pista hundida telemática animada (Animloader estilo Uiverse alexruix)
-          _AnimatedTelemetryTrack(isAbsent: isAbsent),
-          const SizedBox(height: 20),
-
-          // Fila Inferior: Parada y Chip "EN CAMINO"
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF94A3B8),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.place_rounded,
-                          color: Color(0xFF64748B),
-                          size: 13,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Parada: ${student.pickupAddress}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF334155),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEF5FA),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: const Color(0xFFD3E4F0),
-                    width: 1.0,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: isAbsent ? SmartColors.primaryCrimson : const Color(0xFF00C9FF),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isAbsent ? SmartColors.primaryCrimson : const Color(0xFF00C9FF))
-                                .withValues(alpha: 0.6),
-                            blurRadius: 6,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      isAbsent ? 'OMITIDO' : 'EN CAMINO',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: const Color(0xFF1E3A52),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
 }
 
-/// Pista hundida telemática animada inspirada en la cinemática de ondas del animloader (Uiverse.io alexruix):
-/// Las cápsulas redondeadas oscilan dinámicamente con desfase sinusoidal continuo (staggered delay),
-/// transmitiendo la pulsación viva de telemetría por satélite GPS en tiempo real.
-class _AnimatedTelemetryTrack extends StatefulWidget {
+/// Tarjeta de Tiempo Estimado de Llegada (ETA) con telemetría en tiempo real:
+/// - Muestra el tiempo restante sincronizado con la cuenta regresiva.
+/// - Barra de progreso lineal elegante con estilo Uiverse (track gris #BABABA,
+///   indicador azul vibrante #0071E2, bordes redondeados y glow sutil).
+/// - Llena progresivamente de 0% a 100% en un tiempo exacto de 10 minutos (600 segundos).
+class _EtaProgressCard extends StatefulWidget {
+  final RouteMock? defaultRoute;
+  final StopMock? defaultStop;
+  final StudentPassengerMock student;
   final bool isAbsent;
 
-  const _AnimatedTelemetryTrack({required this.isAbsent});
+  const _EtaProgressCard({
+    required this.defaultRoute,
+    required this.defaultStop,
+    required this.student,
+    required this.isAbsent,
+  });
 
   @override
-  State<_AnimatedTelemetryTrack> createState() => _AnimatedTelemetryTrackState();
+  State<_EtaProgressCard> createState() => _EtaProgressCardState();
 }
 
-class _AnimatedTelemetryTrackState extends State<_AnimatedTelemetryTrack>
+class _EtaProgressCardState extends State<_EtaProgressCard>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _progressController;
+
+  static const Duration _totalDuration = Duration(minutes: 10);
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _progressController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..repeat();
+      duration: _totalDuration,
+    );
+
+    if (!widget.isAbsent) {
+      _progressController.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _EtaProgressCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isAbsent != oldWidget.isAbsent) {
+      if (widget.isAbsent) {
+        _progressController.stop();
+      } else {
+        _progressController.forward();
+      }
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _progressController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFF00C9FF);
-    const inactiveColor = Color(0xFFCBD5E1);
+    return AnimatedBuilder(
+      animation: _progressController,
+      builder: (context, _) {
+        final double progress = _progressController.value;
+        final bool isCompleted = progress >= 1.0;
 
-    final List<double> baseHeights = [
-      6.0,
-      9.0,
-      13.0,
-      16.5,
-      19.5,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-      22.0,
-    ];
+        // Minutos restantes: inicia en 10 MIN y desciende progresivamente hasta 0 MIN
+        final int remainingSeconds = ((1.0 - progress) * _totalDuration.inSeconds).ceil();
+        final int remainingMinutes = (remainingSeconds / 60).ceil();
 
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE5ECF2),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            offset: const Offset(0, 2),
-            blurRadius: 4,
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.85),
-            offset: const Offset(0, -1),
-            blurRadius: 2,
-          ),
-        ],
-      ),
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: baseHeights.asMap().entries.map((entry) {
-              final index = entry.key;
-              final baseH = entry.value;
-              final isActive = index <= 8 && !widget.isAbsent;
+        final String etaDisplay = widget.isAbsent
+            ? '--'
+            : (isCompleted ? '0' : '$remainingMinutes');
 
-              double currentH = baseH;
-              double glowAlpha = 0.35;
+        final String statusLabel = widget.isAbsent
+            ? 'OMITIDO'
+            : (isCompleted ? 'LLEGÓ' : 'EN CAMINO');
 
-              if (!widget.isAbsent) {
-                // Cálculo de fase sinusoidal desfasada por cada índice (staggered delay)
-                final phase = (_controller.value * 2 * math.pi) - (index * 0.40);
-                final wave = (math.sin(phase) + 1.0) / 2.0;
+        final Color statusColor = widget.isAbsent
+            ? SmartColors.primaryCrimson
+            : (isCompleted ? const Color(0xFF10B981) : const Color(0xFF0071E2));
 
-                if (isActive) {
-                  // Oscilación vertical activa tipo animloader entre 4px y baseHeight
-                  const minH = 4.0;
-                  currentH = minH + (baseH - minH) * (0.2 + 0.8 * wave);
-                  glowAlpha = 0.20 + (0.45 * wave);
-                } else {
-                  // Suave onda de eco en las barras pendientes
-                  const minH = 12.0;
-                  currentH = minH + (baseH - minH) * (0.65 + 0.35 * wave);
-                }
-              } else {
-                currentH = 5.0;
-              }
+        return NeumorphicBox(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          borderRadius: BorderRadius.circular(28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Fila Superior: Icono de Bus en relieve suave, Título de la Ruta y Botón Chevron
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: SmartColors.ghostWhite,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.neuLightShadow,
+                          offset: const Offset(-2, -2),
+                          blurRadius: 5,
+                        ),
+                        BoxShadow(
+                          color: SmartColors.deepBlue.withValues(alpha: 0.08),
+                          offset: const Offset(2, 3),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus_rounded,
+                      color: Color(0xFF6B7C8E),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      widget.defaultRoute?.name ?? 'Ruta Escolar Norte – Col. San José',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF101828),
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: SmartColors.ghostWhite,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.neuLightShadow,
+                          offset: const Offset(-2, -2),
+                          blurRadius: 4,
+                        ),
+                        BoxShadow(
+                          color: SmartColors.deepBlue.withValues(alpha: 0.08),
+                          offset: const Offset(2, 2.5),
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFF334155),
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
 
-              final color = isActive ? activeColor : inactiveColor;
-              final isCircle = index == 0 && currentH <= 6.5;
+              // Contador Central: Número gigante y texto MIN
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    etaDisplay,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 68,
+                      fontWeight: FontWeight.w900,
+                      color: widget.isAbsent ? SmartColors.smartGray : const Color(0xFF0F172A),
+                      letterSpacing: -2.5,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'MIN',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: const Color(0xFF1E3A52),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
 
-              return Container(
-                width: isCircle ? 5.5 : 7.0,
-                height: currentH,
-                decoration: BoxDecoration(
-                  color: color,
+              // Barra de carga lineal con llenado progresivo en 10 minutos (Estilo Uiverse)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: ClipRRect(
                   borderRadius: BorderRadius.circular(999),
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: activeColor.withValues(alpha: glowAlpha),
-                            blurRadius: 4.0 * (currentH / baseH),
-                            spreadRadius: 0.3,
+                  child: Container(
+                    height: 6.0,
+                    width: double.infinity,
+                    color: const Color(0xFFBABABA), // Track gris #BABABA fiel a la referencia
+                    child: Stack(
+                      children: [
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: widget.isAbsent ? 0.0 : progress.clamp(0.0, 1.0),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0071E2), // Azul vibrante #0071E2
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF0071E2).withValues(alpha: 0.5),
+                                  blurRadius: 6,
+                                  spreadRadius: 0.5,
+                                ),
+                              ],
+                            ),
                           ),
-                        ]
-                      : null,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              );
-            }).toList(),
-          );
-        },
-      ),
+              ),
+              const SizedBox(height: 20),
+
+              // Fila Inferior: Parada y Chip 'EN CAMINO' / 'LLEGÓ'
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF94A3B8),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.place_rounded,
+                              color: Color(0xFF64748B),
+                              size: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Parada: ${widget.student.pickupAddress}',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF334155),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF5FA),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: const Color(0xFFD3E4F0),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: statusColor.withValues(alpha: 0.6),
+                                blurRadius: 6,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          statusLabel,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: const Color(0xFF1E3A52),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

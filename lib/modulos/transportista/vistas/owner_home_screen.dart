@@ -10,6 +10,7 @@ import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/widgets/user_options_bar.dart';
 import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class OwnerHomeScreen extends StatelessWidget {
@@ -72,16 +73,7 @@ class OwnerHomeScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  NeumorphicBox(
-                    isPill: true,
-                    padding: const EdgeInsets.all(12),
-                    onTap: () => context.push('/notifications'),
-                    child: const Icon(
-                      Icons.notifications_none_rounded,
-                      size: 18,
-                      color: SmartColors.deepBlack,
-                    ),
-                  ),
+                  const UserAppBarActions(),
                 ],
               ),
               const SizedBox(height: 24),

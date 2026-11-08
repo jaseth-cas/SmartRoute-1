@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
@@ -31,7 +32,9 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
   bool isUpdating = false;
-  String _activeTab = 'Tracking'; // 'Tracking', 'Analytics', 'Detalles'
+  String _activeTab = 'Tracking'; // 'Tracking', 'Colegios', 'Analytics', 'Detalles'
+  bool _showSchools = true; // Visibilidad de los puntos rojos de escuelas
+  SchoolLocation? _selectedSchool; // Colegio seleccionado para enfocar o ver ficha
 
   // Ruta 1: Desde la Casa del Estudiante hasta la Parada de Recogida (Ruta de acceso en Vía Cristo Rey)
   final List<LatLng> studentWalkPath = const [
@@ -213,6 +216,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                             ),
                           ),
                         _buildMapFloatingControls(),
+                        if (_selectedSchool != null)
+                          Positioned(
+                            bottom: 24,
+                            left: 24,
+                            right: 24,
+                            child: _buildSelectedSchoolOverlay(),
+                          ),
                       ],
                     ),
                   ),
@@ -242,6 +252,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                     ),
                   ),
                   _buildMapFloatingControls(isMobile: true),
+                  if (_selectedSchool != null)
+                    Positioned(
+                      top: 72,
+                      left: 16,
+                      right: 16,
+                      child: _buildSelectedSchoolOverlay(),
+                    ),
                   DraggableScrollableSheet(
                     initialChildSize: 0.40,
                     minChildSize: 0.16,
@@ -404,6 +421,18 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 bgColor: SmartColors.deepBlue,
               ),
             ),
+
+            // Marcadores de los 9 Colegios y Escuelas de Penonomé mapeados con Punto Rojo
+            if (_showSchools)
+              ...MockData.penonomeSchools.map((school) {
+                final isSelected = _selectedSchool?.id == school.id;
+                return Marker(
+                  point: LatLng(school.latitude, school.longitude),
+                  width: 140,
+                  height: 52,
+                  child: _buildSchoolRedPointMarker(school, isSelected: isSelected),
+                );
+              }),
           ],
         ),
       ],
@@ -437,6 +466,21 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             padding: const EdgeInsets.all(12),
             onTap: _centerOnBus,
             child: const Icon(Icons.directions_bus_rounded, size: 20, color: SmartColors.vibrantCyan),
+          ),
+          const SizedBox(height: 10),
+          NeumorphicBox(
+            isPill: true,
+            padding: const EdgeInsets.all(12),
+            onTap: () {
+              setState(() {
+                _showSchools = !_showSchools;
+              });
+            },
+            child: Icon(
+              Icons.school_rounded,
+              size: 20,
+              color: _showSchools ? SmartColors.primaryCrimson : SmartColors.smartGray,
+            ),
           ),
           const SizedBox(height: 10),
           NeumorphicBox(
@@ -640,13 +684,15 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
         const SizedBox(height: 20),
 
-        // Selector de Pestañas: Tracking, Analytics, Detalles
+        // Selector de Pestañas: Tracking, Colegios, Analytics, Detalles
         Row(
           children: [
             _buildTabPill('Tracking'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            _buildTabPill('Colegios'),
+            const SizedBox(width: 6),
             _buildTabPill('Analytics'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildTabPill('Detalles'),
           ],
         ),
@@ -657,6 +703,11 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         if (_activeTab == 'Tracking') ...[
           // Tarjeta de la Unidad / Bus Escolar
           _buildBusVehicleCard(bus),
+
+          const SizedBox(height: 16),
+
+          // Selector rápido de Colegios de Penonomé
+          _buildQuickSchoolsRow(),
 
           const SizedBox(height: 18),
 
@@ -672,6 +723,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           ),
           const SizedBox(height: 12),
           _buildStopTimeline(),
+        ] else if (_activeTab == 'Colegios') ...[
+          _buildPenonomeSchoolsView(),
         ] else if (_activeTab == 'Analytics') ...[
           _buildAnalyticsView(bus),
         ] else ...[
@@ -777,7 +830,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         onTap: () => setState(() => _activeTab = title),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
           decoration: BoxDecoration(
             color: isSelected ? SmartColors.deepBlack : SmartColors.neuInset,
             borderRadius: BorderRadius.circular(14),
@@ -795,10 +848,14 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           child: Text(
             title,
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
+              fontSize: title == 'Colegios' ? 10.5 : 11,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? SmartColors.vibrantCyan : SmartColors.smartGray,
+              color: isSelected
+                  ? (title == 'Colegios' ? SmartColors.primaryCrimson : SmartColors.vibrantCyan)
+                  : SmartColors.smartGray,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -1705,6 +1762,462 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           ),
           child: Icon(icon, size: 12, color: Colors.white),
         ),
+      ],
+    );
+  }
+
+  // Marcador con Punto Rojo y etiqueta para los Colegios de Penonomé
+  Widget _buildSchoolRedPointMarker(SchoolLocation school, {bool isSelected = false}) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedSchool = school;
+        });
+        _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Píldora identificadora con el nombre del colegio
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: isSelected ? SmartColors.deepBlack : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: SmartColors.primaryCrimson,
+                width: isSelected ? 1.8 : 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: SmartColors.primaryCrimson.withValues(alpha: isSelected ? 0.35 : 0.20),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5.5,
+                  height: 5.5,
+                  decoration: const BoxDecoration(
+                    color: SmartColors.primaryCrimson,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    school.shortName,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          // Punto Rojo (con halo translúcido y relieve blanco)
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson.withValues(alpha: 0.25),
+                ),
+              ),
+              Container(
+                width: 13,
+                height: 13,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson,
+                  border: Border.all(color: Colors.white, width: 2.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SmartColors.primaryCrimson.withValues(alpha: 0.65),
+                      blurRadius: 5,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Ficha flotante sobre el mapa cuando un colegio está seleccionado
+  Widget _buildSelectedSchoolOverlay() {
+    final school = _selectedSchool!;
+    return NeumorphicBox(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      borderRadius: BorderRadius.circular(20),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: SmartColors.primaryCrimson, width: 1.5),
+            ),
+            child: const Center(
+              child: Icon(Icons.school_rounded, color: SmartColors.primaryCrimson, size: 18),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: SmartColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'PUNTO ROJO // PENONOMÉ',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.primaryCrimson,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  school.name,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  school.address,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: SmartColors.smartGray,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () {
+              _mapController.move(LatLng(school.latitude, school.longitude), 17.2);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: SmartColors.deepBlack,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.my_location_rounded, size: 14, color: SmartColors.vibrantCyan),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => setState(() => _selectedSchool = null),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: SmartColors.neuInset,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close_rounded, size: 16, color: SmartColors.smartGray),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fila de chips rápidos para los 9 Colegios de Penonomé (Pestaña Tracking)
+  Widget _buildQuickSchoolsRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'COLEGIOS DE PENONOMÉ (9)',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                color: SmartColors.smartGray,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _activeTab = 'Colegios'),
+              child: Text(
+                'VER LISTA >',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.primaryCrimson,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: MockData.penonomeSchools.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final school = MockData.penonomeSchools[index];
+              final isSelected = _selectedSchool?.id == school.id;
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedSchool = school);
+                  _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? SmartColors.deepBlack : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? SmartColors.primaryCrimson : const Color(0xFFE2E8F0),
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: SmartColors.primaryCrimson,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        school.shortName,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Vista completa de los 9 Colegios de Penonomé en el Panel Telemático
+  Widget _buildPenonomeSchoolsView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'COLEGIOS DE PENONOMÉ',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '9 instituciones mapeadas',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+              ],
+            ),
+            GestureDetector(
+              onTap: () {
+                _mapController.move(const LatLng(8.5135, -80.3530), 14.3);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: SmartColors.deepBlack,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.zoom_out_map_rounded, size: 14, color: SmartColors.vibrantCyan),
+                    const SizedBox(width: 6),
+                    Text(
+                      'VER TODOS',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.ghostWhite,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // Lista de instituciones
+        ...MockData.penonomeSchools.map((school) {
+          final isSelected = _selectedSchool?.id == school.id;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _selectedSchool = school);
+                _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+              },
+              child: NeumorphicBox(
+                padding: const EdgeInsets.all(14),
+                borderRadius: BorderRadius.circular(18),
+                isInset: isSelected,
+                child: Row(
+                  children: [
+                    // Punto rojo identificador con halo
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: SmartColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: SmartColors.primaryCrimson.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            school.name,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            school.address,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: SmartColors.smartGray,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: SmartColors.neuInset,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              school.type,
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: SmartColors.deepBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: isSelected ? SmartColors.primaryCrimson : SmartColors.ghostWhite,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? SmartColors.primaryCrimson
+                              : SmartColors.neuDarkShadow.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.my_location_rounded,
+                        size: 15,
+                        color: isSelected ? Colors.white : SmartColors.deepBlack,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       ],
     );
   }
