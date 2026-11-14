@@ -435,6 +435,8 @@ class StudentPassengerMock {
   final double monthlyFee;
   final String paymentStatus; // "Al día", "Pendiente", "En mora"
   final String? photoAsset;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
 
   StudentPassengerMock({
     required this.id,
@@ -452,6 +454,8 @@ class StudentPassengerMock {
     this.monthlyFee = 65000,
     this.paymentStatus = 'Al día',
     this.photoAsset,
+    this.pickupLatitude,
+    this.pickupLongitude,
   });
 
   StudentPassengerMock copyWith({
@@ -470,6 +474,8 @@ class StudentPassengerMock {
     double? monthlyFee,
     String? paymentStatus,
     String? photoAsset,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) {
     return StudentPassengerMock(
       id: id ?? this.id,
@@ -487,6 +493,8 @@ class StudentPassengerMock {
       monthlyFee: monthlyFee ?? this.monthlyFee,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       photoAsset: photoAsset ?? this.photoAsset,
+      pickupLatitude: pickupLatitude ?? this.pickupLatitude,
+      pickupLongitude: pickupLongitude ?? this.pickupLongitude,
     );
   }
 
@@ -517,6 +525,9 @@ class StudentPassengerMock {
     lastBoardingTime = attendanceMap?['hora_abordaje'];
     boardingMethod = attendanceMap?['metodo_abordaje'];
 
+    final rawLat = map['latitud_recogida'] ?? map['latitud'] ?? map['pickupLatitude'];
+    final rawLng = map['longitud_recogida'] ?? map['longitud'] ?? map['pickupLongitude'];
+
     return StudentPassengerMock(
       id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
       name: map['nombre'] ?? map['name'] ?? '',
@@ -535,6 +546,8 @@ class StudentPassengerMock {
           : 65.0,
       paymentStatus: map['estado_pago'] ?? map['paymentStatus'] ?? 'Al día',
       photoAsset: map['photoAsset'],
+      pickupLatitude: rawLat != null ? double.tryParse(rawLat.toString()) : null,
+      pickupLongitude: rawLng != null ? double.tryParse(rawLng.toString()) : null,
     );
   }
 
@@ -549,6 +562,8 @@ class StudentPassengerMock {
       'orden': order,
       'cuota_mensual': monthlyFee,
       'estado_pago': paymentStatus,
+      if (pickupLatitude != null) 'latitud_recogida': pickupLatitude,
+      if (pickupLongitude != null) 'longitud_recogida': pickupLongitude,
     };
   }
 }

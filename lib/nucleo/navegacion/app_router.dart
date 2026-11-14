@@ -18,6 +18,7 @@ import 'package:smartroute_flutter/modulos/padre/vistas/notifications_screen.dar
 import 'package:smartroute_flutter/modulos/padre/vistas/notification_settings_screen.dart';
 import 'package:smartroute_flutter/modulos/padre/vistas/student_profile_screen.dart';
 import 'package:smartroute_flutter/modulos/padre/vistas/edit_profile_screen.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_home_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_demand_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/report_incident_screen.dart';
@@ -210,6 +211,15 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: EditProfileScreen(),
           ),
+        ),
+        GoRoute(
+          path: '/student_location_picker',
+          pageBuilder: (context, state) {
+            final student = state.extra as StudentPassengerMock?;
+            return NoTransitionPage(
+              child: StudentLocationPickerScreen(student: student),
+            );
+          },
         ),
         GoRoute(
           path: '/driver_welcome_splash',

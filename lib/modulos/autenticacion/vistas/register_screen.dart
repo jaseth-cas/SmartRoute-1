@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
@@ -48,6 +49,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (response.user != null) {
+        if (_selectedRole == UserRole.student) {
+          await StudentLocationPickerScreen.open(context);
+          if (!mounted) return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -71,6 +76,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (mounted) {
+      if (_selectedRole == UserRole.student) {
+        await StudentLocationPickerScreen.open(context);
+        if (!mounted) return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

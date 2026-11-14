@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/utilidades/coordinate_parser.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:smartroute_flutter/nucleo/widgets/session_info_card.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
@@ -137,6 +140,17 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     ),
                     const Divider(height: 20),
                     _ProfileInfoItem(
+                      icon: Icons.gps_fixed_rounded,
+                      label: 'COORDENADAS GPS DE RECOGIDA',
+                      value: student.pickupLatitude != null && student.pickupLongitude != null
+                          ? CoordinateParser.formatDd(
+                              LatLng(student.pickupLatitude!, student.pickupLongitude!),
+                            )
+                          : 'Sin configurar',
+                      isMono: true,
+                    ),
+                    const Divider(height: 20),
+                    _ProfileInfoItem(
                       icon: Icons.phone_outlined,
                       label: 'TELÉFONO DE EMERGENCIA',
                       value: student.parentPhone,
@@ -161,7 +175,21 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               const SizedBox(height: 20),
 
               const SessionInfoCard(),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
+
+              PrimaryButton(
+                text: 'UBICAR DOMICILIO EN MAPA (GPS / COORDENADAS)',
+                icon: Icons.edit_location_alt_rounded,
+                isCyan: true,
+                onPressed: () async {
+                  await StudentLocationPickerScreen.open(
+                    context,
+                    student: student,
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
+              const SizedBox(height: 14),
 
               PrimaryButton(
                 text: 'CERRAR SESIÓN',

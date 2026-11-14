@@ -4,7 +4,8 @@ import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
-/// Servicio para la gestión de estudiantes matriculados, asignación de cupos y resumen financiero.
+/// Servicio para la gestión de estudiantes matriculados, asignación de cupos,
+/// coordenadas exactas de recogida (GPS / manual) y resumen financiero.
 class StudentService {
   final SupabaseClient? _injectedClient;
 
@@ -26,6 +27,8 @@ class StudentService {
     required BusMock bus,
     String schoolName = 'Colegio San José',
     double monthlyFee = 65.0,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) async {
     if (!canEnrollStudent(bus)) {
       throw StateError(
@@ -53,6 +56,8 @@ class StudentService {
       status: PassengerStatus.waiting,
       monthlyFee: monthlyFee,
       paymentStatus: 'Al día',
+      pickupLatitude: pickupLatitude,
+      pickupLongitude: pickupLongitude,
     );
 
     MockData.passengers.add(newStudent);
@@ -64,35 +69,197 @@ class StudentService {
     }
 
     try {
-      final inserted = await _supabase
-          .from('estudiantes_pasajeros')
-          .insert({
-            'nombre': newStudent.name,
-            'padre_nombre': newStudent.parentName,
-            'padre_telefono': newStudent.parentPhone,
-            'colegio': newStudent.schoolName,
-            'direccion_recogida': newStudent.pickupAddress,
-            'autobus_codigo': bus.code,
-            'orden': nextOrder,
-            'cuota_mensual': monthlyFee,
-            'estado_pago': 'Al día',
-          })
-          .select()
-          .maybeSingle();
+      final basePayload = <String, dynamic>{
+        'nombre': newStudent.name,
+        'padre_nombre': newStudent.parentName,
+        'padre_telefono': newStudent.parentPhone,
+        'colegio': newStudent.schoolName,
+        'direccion_recogida': newStudent.pickupAddress,
+        'autobus_codigo': bus.code,
+        'orden': nextOrder,
+        'cuota_mensual': monthlyFee,
+        'estado_pago': 'Al día',
+      };
+
+      Map<String, dynamic>? inserted;
+      try {
+        final payloadWithCoords = <String, dynamic>{
+          ...basePayload,
+        };
+        if (pickupLatitude != null) payloadWithCoords['latitud_recogida'] = pickupLatitude;
+        if (pickupLongitude != null) payloadWithCoords['longitud_recogida'] = pickupLongitude;
+        inserted = await _supabase
+            .from('estudiantes_pasajeros')
+            .insert(payloadWithCoords)
+            .select()
+            .maybeSingle();
+      } catch (_) {
+        // Fallback si la instancia remota aún no tiene las columnas latitud_recogida / longitud_recogida
+        inserted = await _supabase
+            .from('estudiantes_pasajeros')
+            .insert(basePayload)
+            .select()
+            .maybeSingle();
+      }
 
       await _supabase
           .from('autobuses')
           .update({'asientos_ocupados': bus.seatsOccupied + 1})
           .eq('codigo', bus.code);
 
+      if (pickupLatitude != null && pickupLongitude != null) {
+        final createdId = inserted != null
+            ? (inserted['id'] is int ? inserted['id'] as int : int.tryParse(inserted['id'].toString()) ?? newId)
+            : newId;
+        await _syncStudentStopInParadasRuta(
+          studentId: createdId,
+          studentName: newStudent.name,
+          pickupAddress: newStudent.pickupAddress,
+          busCode: bus.code,
+          order: nextOrder,
+          latitude: pickupLatitude,
+          longitude: pickupLongitude,
+        );
+      }
+
       if (inserted != null) {
-        return StudentPassengerMock.fromMap(inserted);
+        return StudentPassengerMock.fromMap(inserted).copyWith(
+          pickupLatitude: pickupLatitude,
+          pickupLongitude: pickupLongitude,
+        );
       }
     } catch (e) {
       debugPrint('Aviso en enrollStudent Supabase: $e');
     }
 
     return newStudent;
+  }
+
+  /// Guarda o actualiza las coordenadas exactas de recogida (GPS o ingreso manual) en Supabase y memoria local.
+  Future<StudentPassengerMock?> updateStudentPickupLocation({
+    required int studentId,
+    required double latitude,
+    required double longitude,
+    String? pickupAddress,
+    String? busCode,
+  }) async {
+    final updatedLocal = MockData.updateStudentProfile(
+      studentId: studentId,
+      pickupAddress: pickupAddress?.trim(),
+      pickupLatitude: latitude,
+      pickupLongitude: longitude,
+    );
+
+    // Actualizar también la lista local de paradas si existe una parada asociada al estudiante
+    final stopCode = 'EST-$studentId';
+    final stopIndex = MockData.stops.indexWhere((s) => s.stopCode == stopCode);
+    if (stopIndex != -1) {
+      MockData.stops[stopIndex] = MockData.stops[stopIndex].copyWith(
+        latitude: latitude,
+        longitude: longitude,
+        reference: pickupAddress ?? MockData.stops[stopIndex].reference,
+      );
+    } else if (updatedLocal != null) {
+      MockData.stops.add(
+        StopMock(
+          id: 100 + studentId,
+          routeCode: updatedLocal.routeCode,
+          stopCode: stopCode,
+          name: 'Casa de ${updatedLocal.name}',
+          reference: pickupAddress ?? updatedLocal.pickupAddress,
+          order: updatedLocal.order,
+          distanceFromStartKm: updatedLocal.order * 0.8,
+          latitude: latitude,
+          longitude: longitude,
+          isFavorite: true,
+        ),
+      );
+    }
+
+    try {
+      final updatesWithCoords = <String, dynamic>{
+        'latitud_recogida': latitude,
+        'longitud_recogida': longitude,
+        if (pickupAddress != null && pickupAddress.trim().isNotEmpty)
+          'direccion_recogida': pickupAddress.trim(),
+      };
+
+      try {
+        await _supabase
+            .from('estudiantes_pasajeros')
+            .update(updatesWithCoords)
+            .eq('id', studentId);
+      } catch (_) {
+        if (pickupAddress != null && pickupAddress.trim().isNotEmpty) {
+          await _supabase
+              .from('estudiantes_pasajeros')
+              .update({'direccion_recogida': pickupAddress.trim()})
+              .eq('id', studentId);
+        }
+      }
+
+      await _syncStudentStopInParadasRuta(
+        studentId: studentId,
+        studentName: updatedLocal?.name ?? 'Estudiante #$studentId',
+        pickupAddress: pickupAddress ?? updatedLocal?.pickupAddress ?? 'Domicilio Escolar',
+        busCode: busCode ?? updatedLocal?.busCode ?? 'BUS-01',
+        order: updatedLocal?.order ?? 1,
+        latitude: latitude,
+        longitude: longitude,
+      );
+    } catch (e) {
+      debugPrint('Aviso en updateStudentPickupLocation Supabase: $e');
+    }
+
+    return updatedLocal;
+  }
+
+  /// Sincroniza el punto de recogida del estudiante en `public.paradas_ruta` (columnas `latitud` y `longitud`).
+  Future<void> _syncStudentStopInParadasRuta({
+    required int studentId,
+    required String studentName,
+    required String pickupAddress,
+    required String busCode,
+    required int order,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final stopCode = 'EST-$studentId';
+      final existing = await _supabase
+          .from('paradas_ruta')
+          .select('id')
+          .eq('codigo', stopCode)
+          .maybeSingle();
+
+      if (existing != null && existing['id'] != null) {
+        await _supabase
+            .from('paradas_ruta')
+            .update({
+              'nombre': 'Domicilio: $studentName',
+              'referencia': pickupAddress,
+              'autobus_codigo': busCode,
+              'orden': order,
+              'latitud': latitude,
+              'longitud': longitude,
+            })
+            .eq('id', existing['id']);
+      } else {
+        await _supabase.from('paradas_ruta').insert({
+          'autobus_codigo': busCode,
+          'codigo': stopCode,
+          'nombre': 'Domicilio: $studentName',
+          'referencia': pickupAddress,
+          'orden': order,
+          'distancia_km': order * 0.8,
+          'latitud': latitude,
+          'longitud': longitude,
+          'is_favorite': true,
+        });
+      }
+    } catch (e) {
+      debugPrint('Aviso sincronizando paradas_ruta: $e');
+    }
   }
 
   /// Actualiza el estado de pago de la mensualidad de un estudiante (RF-06)
@@ -114,73 +281,130 @@ class StudentService {
     return updatedLocal;
   }
 
+  /// Obtiene las coordenadas registradas en `paradas_ruta` indexadas por `EST-{studentId}`
+  Future<Map<int, ({double lat, double lng})>> _fetchStudentStopCoordinatesMap() async {
+    final coordsMap = <int, ({double lat, double lng})>{};
+    try {
+      final stopsResponse = await _supabase
+          .from('paradas_ruta')
+          .select('codigo, latitud, longitud')
+          .like('codigo', 'EST-%')
+          .timeout(const Duration(milliseconds: 2500));
+
+      for (final row in (stopsResponse as List)) {
+        final code = row['codigo']?.toString() ?? '';
+        final idPart = int.tryParse(code.replaceFirst('EST-', ''));
+        final lat = (row['latitud'] as num?)?.toDouble();
+        final lng = (row['longitud'] as num?)?.toDouble();
+        if (idPart != null && lat != null && lng != null) {
+          coordsMap[idPart] = (lat: lat, lng: lng);
+        }
+      }
+    } catch (_) {}
+    return coordsMap;
+  }
+
+  StudentPassengerMock _enrichWithCoordinates(
+    StudentPassengerMock student,
+    Map<int, ({double lat, double lng})> stopsCoordsMap,
+  ) {
+    if (student.pickupLatitude != null && student.pickupLongitude != null) {
+      return student;
+    }
+    final fromStop = stopsCoordsMap[student.id];
+    if (fromStop != null) {
+      return student.copyWith(
+        pickupLatitude: fromStop.lat,
+        pickupLongitude: fromStop.lng,
+      );
+    }
+    final localMatch = MockData.passengers.where((p) => p.id == student.id).firstOrNull;
+    if (localMatch != null && localMatch.pickupLatitude != null && localMatch.pickupLongitude != null) {
+      return student.copyWith(
+        pickupLatitude: localMatch.pickupLatitude,
+        pickupLongitude: localMatch.pickupLongitude,
+      );
+    }
+    return student;
+  }
+
   /// Obtiene los estudiantes asignados a un autobús con su asistencia del día combinada
+  /// ejecutando las 3 consultas en paralelo (`Future.wait`) con timeout rápido de 2.5s.
   Future<List<StudentPassengerMock>> getStudentsByBus(String busCode) async {
     try {
-      // 1. Consultar lista de estudiantes matriculados en la unidad
-      final studentsResponse = await _supabase
-          .from('estudiantes_pasajeros')
-          .select()
-          .eq('autobus_codigo', busCode)
-          .order('orden', ascending: true);
-
-      final studentsList = studentsResponse as List;
-      if (studentsList.isEmpty) return [];
-
-      // 2. Consultar asistencias del día actual para estos estudiantes
-      final studentIds = studentsList.map((s) => s['id']).toList();
       final todayStr = DateTime.now().toIso8601String().split('T')[0];
 
-      final attendanceResponse = await _supabase
-          .from('asistencia_diaria')
-          .select()
-          .filter('estudiante_id', 'in', studentIds)
-          .eq('fecha', todayStr);
+      final results = await Future.wait([
+        _supabase
+            .from('estudiantes_pasajeros')
+            .select()
+            .eq('autobus_codigo', busCode)
+            .order('orden', ascending: true)
+            .timeout(const Duration(milliseconds: 2500)),
+        _supabase
+            .from('asistencia_diaria')
+            .select()
+            .eq('fecha', todayStr)
+            .timeout(const Duration(milliseconds: 2500)),
+        _fetchStudentStopCoordinatesMap(),
+      ]);
+
+      final studentsList = results[0] as List;
+      if (studentsList.isEmpty) return MockData.getPassengersByBus(busCode);
+
+      final attendanceResponse = results[1] as List;
+      final stopsCoordsMap = results[2] as Map<int, ({double lat, double lng})>;
 
       final attendanceMap = <int, Map<String, dynamic>>{};
-      for (final att in (attendanceResponse as List)) {
+      for (final att in attendanceResponse) {
         final id = att['estudiante_id'] is int
             ? att['estudiante_id']
             : int.tryParse(att['estudiante_id'].toString()) ?? 0;
         attendanceMap[id] = att as Map<String, dynamic>;
       }
 
-      // 3. Mapear cada estudiante con su asistencia del día
+      // Mapear cada estudiante con su asistencia del día y sus coordenadas de recogida
       return studentsList.map((row) {
         final id = row['id'] is int
             ? row['id']
             : int.tryParse(row['id'].toString()) ?? 0;
         final att = attendanceMap[id];
-        return StudentPassengerMock.fromMap(row as Map<String, dynamic>, att);
+        final baseStudent = StudentPassengerMock.fromMap(row as Map<String, dynamic>, att);
+        return _enrichWithCoordinates(baseStudent, stopsCoordsMap);
       }).toList();
     } catch (e) {
       debugPrint('Error en getStudentsByBus: $e');
-      return [];
+      return MockData.getPassengersByBus(busCode);
     }
   }
 
-  /// Obtiene el o los estudiantes a cargo del padre autenticado
+  /// Obtiene el o los estudiantes a cargo del padre autenticado en paralelo
   Future<List<StudentPassengerMock>> getStudentsByParent(String parentId) async {
     try {
-      final response = await _supabase
-          .from('estudiantes_pasajeros')
-          .select()
-          .eq('padre_id', parentId);
+      final todayStr = DateTime.now().toIso8601String().split('T')[0];
 
-      final studentsList = response as List;
+      final results = await Future.wait([
+        _supabase
+            .from('estudiantes_pasajeros')
+            .select()
+            .eq('padre_id', parentId)
+            .timeout(const Duration(milliseconds: 2500)),
+        _supabase
+            .from('asistencia_diaria')
+            .select()
+            .eq('fecha', todayStr)
+            .timeout(const Duration(milliseconds: 2500)),
+        _fetchStudentStopCoordinatesMap(),
+      ]);
+
+      final studentsList = results[0] as List;
       if (studentsList.isEmpty) return [];
 
-      final todayStr = DateTime.now().toIso8601String().split('T')[0];
-      final studentIds = studentsList.map((s) => s['id']).toList();
-
-      final attendanceResponse = await _supabase
-          .from('asistencia_diaria')
-          .select()
-          .filter('estudiante_id', 'in', studentIds)
-          .eq('fecha', todayStr);
+      final attendanceResponse = results[1] as List;
+      final stopsCoordsMap = results[2] as Map<int, ({double lat, double lng})>;
 
       final attendanceMap = <int, Map<String, dynamic>>{};
-      for (final att in (attendanceResponse as List)) {
+      for (final att in attendanceResponse) {
         final id = att['estudiante_id'] is int
             ? att['estudiante_id']
             : int.tryParse(att['estudiante_id'].toString()) ?? 0;
@@ -192,7 +416,8 @@ class StudentService {
             ? row['id']
             : int.tryParse(row['id'].toString()) ?? 0;
         final att = attendanceMap[id];
-        return StudentPassengerMock.fromMap(row as Map<String, dynamic>, att);
+        final baseStudent = StudentPassengerMock.fromMap(row as Map<String, dynamic>, att);
+        return _enrichWithCoordinates(baseStudent, stopsCoordsMap);
       }).toList();
     } catch (e) {
       debugPrint('Error en getStudentsByParent: $e');
@@ -212,16 +437,24 @@ class StudentService {
     return fallbackList.isNotEmpty ? fallbackList.first : null;
   }
 
-  /// Obtiene todos los estudiantes registrados para el control del transportista
+  /// Obtiene todos los estudiantes registrados para el control del transportista en paralelo
   Future<List<StudentPassengerMock>> getAllStudents() async {
     try {
-      final response = await _supabase
-          .from('estudiantes_pasajeros')
-          .select()
-          .order('orden', ascending: true);
+      final results = await Future.wait([
+        _supabase
+            .from('estudiantes_pasajeros')
+            .select()
+            .order('orden', ascending: true)
+            .timeout(const Duration(milliseconds: 2500)),
+        _fetchStudentStopCoordinatesMap(),
+      ]);
 
-      final list = (response as List).map((row) {
-        return StudentPassengerMock.fromMap(row as Map<String, dynamic>);
+      final response = results[0] as List;
+      final stopsCoordsMap = results[1] as Map<int, ({double lat, double lng})>;
+
+      final list = response.map((row) {
+        final baseStudent = StudentPassengerMock.fromMap(row as Map<String, dynamic>);
+        return _enrichWithCoordinates(baseStudent, stopsCoordsMap);
       }).toList();
 
       if (list.isNotEmpty) return list;
@@ -235,7 +468,6 @@ class StudentService {
   /// Calcula el resumen financiero y métricas de aforo para el transportista
   Future<FleetFinancialSummary> getFleetFinancialSummary([String? ownerId]) async {
     try {
-      // Consultar autobuses
       var busesQuery = _supabase.from('autobuses').select('capacidad, asientos_ocupados');
       if (ownerId != null) {
         busesQuery = busesQuery.eq('dueno_id', ownerId);
@@ -249,7 +481,6 @@ class StudentService {
         occupiedSeats += (b['asientos_ocupados'] as num?)?.toInt() ?? 0;
       }
 
-      // Consultar estudiantes y estados de pago
       final studentsData = await _supabase
           .from('estudiantes_pasajeros')
           .select('cuota_mensual, estado_pago');
@@ -292,13 +523,15 @@ class StudentService {
     }
   }
 
-  /// Actualiza los datos de contacto o dirección de un estudiante (RF-02)
+  /// Actualiza los datos de contacto, dirección o coordenadas de un estudiante (RF-02)
   Future<void> updateStudentProfile({
     required int studentId,
     String? name,
     String? pickupAddress,
     String? parentPhone,
     String? schoolName,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) async {
     MockData.updateStudentProfile(
       studentId: studentId,
@@ -306,7 +539,18 @@ class StudentService {
       pickupAddress: pickupAddress?.trim(),
       parentPhone: parentPhone?.trim(),
       schoolName: schoolName?.trim(),
+      pickupLatitude: pickupLatitude,
+      pickupLongitude: pickupLongitude,
     );
+
+    if (pickupLatitude != null && pickupLongitude != null) {
+      await updateStudentPickupLocation(
+        studentId: studentId,
+        latitude: pickupLatitude,
+        longitude: pickupLongitude,
+        pickupAddress: pickupAddress,
+      );
+    }
 
     try {
       final updates = <String, dynamic>{};

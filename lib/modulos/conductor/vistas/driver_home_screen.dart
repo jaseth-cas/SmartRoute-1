@@ -11,6 +11,7 @@ import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.d
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/osrm_routing_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
@@ -73,17 +74,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
     LatLng(8.5242, -80.3522), // Parada en Vía hacia Sonadora
   ];
 
-  // Ruta 2: Recorrido del Autobús Colegial en vivo (Vía hacia Sonadora -> Colegio San José)
-  final List<LatLng> schoolBusPath = const [
-    LatLng(8.5270, -80.3512), // Origen ruta colegial
-    LatLng(8.5242, -80.3522), // Parada de recogida del estudiante
-    LatLng(8.5215, -80.3532), // Vía hacia Sonadora
-    LatLng(8.5186, -80.3541), // Vía hacia Sonadora sur
-    LatLng(8.5172, -80.3540), // Giro de acceso a barriada escolar
-    LatLng(8.5160, -80.3522), // Calle de conexión
-    LatLng(8.5146, -80.3508), // Avenida escolar
-    LatLng(8.5156, -80.3500), // Acceso vehicular
-    LatLng(8.5154, -80.3482), // Colegio San José (Destino)
+  // Ruta 2: Recorrido del Autobús Colegial en vivo (trazada sobre calles reales vía OSRM)
+  final OsrmRoutingService _osrmRoutingService = OsrmRoutingService();
+  List<LatLng> schoolBusPath = [
+    const LatLng(8.5270, -80.3512), // Origen ruta colegial
+    const LatLng(8.5242, -80.3522), // Parada de recogida del estudiante
+    const LatLng(8.5215, -80.3532), // Vía hacia Sonadora
+    const LatLng(8.5186, -80.3541), // Vía hacia Sonadora sur
+    const LatLng(8.5172, -80.3540), // Giro de acceso a barriada escolar
+    const LatLng(8.5160, -80.3522), // Calle de conexión
+    const LatLng(8.5146, -80.3508), // Avenida escolar
+    const LatLng(8.5156, -80.3500), // Acceso vehicular
+    const LatLng(8.5154, -80.3482), // Colegio San José (Destino)
   ];
 
   @override
@@ -134,28 +136,68 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
       final studentService = context.read<StudentService>();
       final session = context.read<SessionManager>().currentSession;
 
-      BusMock? assignedBus;
-      if (session != null && session.userId.isNotEmpty) {
-        assignedBus = await busService.getBusByDriver(session.userId);
-      }
+      // Ejecutar consulta de bus y estudiantes en paralelo con Future.wait
+      final results = await Future.wait([
+        (session != null && session.userId.isNotEmpty)
+            ? busService.getBusByDriver(session.userId)
+            : busService.getBusByCode('BUS-01'),
+        studentService.getStudentsByBus('BUS-01'),
+      ]);
 
-      final bus = assignedBus ??
-          await busService.getBusByCode('BUS-01') ??
+      final bus = (results[0] as BusMock?) ??
           MockData.getBusByCode('BUS-01') ??
           MockData.buses.first;
 
-      final students = await studentService.getStudentsByBus(bus.code);
+      final students = bus.code == 'BUS-01'
+          ? (results[1] as List<StudentPassengerMock>)
+          : await studentService.getStudentsByBus(bus.code);
+
+      final effectiveStudents = students.isNotEmpty
+          ? students
+          : MockData.getPassengersByBus(bus.code);
 
       if (mounted) {
         setState(() {
           _bus = bus;
-          _passengers = students;
+          _passengers = effectiveStudents;
           _currentLat = bus.latitude ?? _currentBusPos.latitude;
           _currentLng = bus.longitude ?? _currentBusPos.longitude;
         });
       }
+
+      // Actualizar polilínea de calles OSRM en segundo plano sin bloquear la UI
+      unawaited(_refreshOsrmStreetRoute(effectiveStudents));
     } catch (e) {
       debugPrint('Error cargando datos del conductor: $e');
+    }
+  }
+
+  /// Calcula la polilínea real sobre calles transitables usando OSRM (`OsrmRoutingService.getDrivingRoute`)
+  /// conectando los puntos de recogida de los estudiantes activos hasta el colegio de destino.
+  Future<void> _refreshOsrmStreetRoute(List<StudentPassengerMock> students) async {
+    final activeWaypoints = <LatLng>[
+      const LatLng(8.5270, -80.3512), // Punto de salida de la ruta
+    ];
+
+    for (final s in students) {
+      if (s.status != PassengerStatus.absent &&
+          s.pickupLatitude != null &&
+          s.pickupLongitude != null) {
+        activeWaypoints.add(LatLng(s.pickupLatitude!, s.pickupLongitude!));
+      }
+    }
+
+    activeWaypoints.add(const LatLng(8.5154, -80.3482)); // Destino Colegio San José
+
+    final streetGeometry = await _osrmRoutingService.getDrivingRoute(activeWaypoints);
+    if (mounted && streetGeometry.length >= 2) {
+      setState(() {
+        schoolBusPath = streetGeometry;
+        _initDistances();
+        if (_currentSegmentIndex >= schoolBusPath.length - 1) {
+          _currentSegmentIndex = 0;
+        }
+      });
     }
   }
 
@@ -332,6 +374,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
         : MockData.getPassengersByBus(bus.code);
     final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
     final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -342,85 +385,111 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
             child: _buildDriverMap(bus),
           ),
 
-          // 2. Cabina Conductor (Alineada en la esquina superior izquierda)
-          Positioned(
-            top: 16,
-            left: 16,
-            child: _buildDriverHeaderPill(session?.name ?? "Juan Pérez", bus),
-          ),
-
-          // 3. Componentes del Lateral Superior Derecho: GPS Navegación Activa y Opciones de Usuario
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: SmartColors.neuInset,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: SmartColors.deepBlack.withValues(alpha: 0.12),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+          // 2 & 3. HUD Superior Responsivo (En teléfono usa una fila limpia de ancho completo sin solapamiento)
+          if (isMobile)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 10,
+              left: 12,
+              right: 12,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: _buildDriverHeaderPill(
+                      session?.name ?? "Juan Pérez",
+                      bus,
+                      isMobile: true,
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: gpsActive ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'GPS NAVEGACIÓN ACTIVA',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: SmartColors.deepBlue,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  const UserAppBarActions(
+                    buttonSize: 38,
+                    noTrailingPadding: true,
                   ),
-                ),
-                const SizedBox(width: 8),
-                const UserAppBarActions(
-                  buttonSize: 42,
-                  noTrailingPadding: true,
-                ),
-              ],
+                ],
+              ),
+            )
+          else ...[
+            // Cabina Conductor (Alineada en la esquina superior izquierda en Web/Desktop)
+            Positioned(
+              top: 16,
+              left: 16,
+              child: _buildDriverHeaderPill(session?.name ?? "Juan Pérez", bus),
             ),
-          ),
+
+            // Componentes del Lateral Superior Derecho: GPS Navegación Activa y Opciones de Usuario
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: SmartColors.neuInset,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.deepBlack.withValues(alpha: 0.12),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: gpsActive ? SmartColors.vibrantCyan : SmartColors.primaryCrimson,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'GPS NAVEGACIÓN ACTIVA',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: SmartColors.deepBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const UserAppBarActions(
+                    buttonSize: 42,
+                    noTrailingPadding: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // 4. Panel de Retroalimentación en Vivo: Cámara Interna del Autobús (CCTV Retrovisor AI)
           if (_isCameraExpanded)
             Positioned(
-              top: 72,
-              right: 76,
+              top: isMobile ? MediaQuery.paddingOf(context).top + 78 : 72,
+              right: isMobile ? 64 : 76,
               child: _buildLiveCCTVCameraPanel(bus),
             ),
 
           // 5. Botón de Alerta / Reanudar Seguimiento si el conductor movió el mapa manualmente
           if (!_isAutoTracking)
             Positioned(
-              top: 16,
-              left: 340,
+              top: isMobile ? MediaQuery.paddingOf(context).top + 74 : 16,
+              left: isMobile ? 12 : 340,
               child: _buildResumeTrackingPill(),
             ),
 
           // 6. Controles Flotantes del Mapa
           Positioned(
-            top: 72,
-            right: 16,
+            top: isMobile ? MediaQuery.paddingOf(context).top + 78 : 72,
+            right: isMobile ? 12 : 16,
             child: _buildMapFloatingControls(),
           ),
 
@@ -479,6 +548,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   // MAPA INTERACTIVO CON POLILÍNEAS Y NAVEGACIÓN
   // ==========================================
   Widget _buildDriverMap(dynamic bus) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
     final traveledPoints = <LatLng>[
       ...schoolBusPath.sublist(0, _currentSegmentIndex + 1),
       _currentBusPos,
@@ -552,41 +622,72 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
             // Marcador 1: Casa del Estudiante
             Marker(
               point: studentWalkPath.first,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "CASA DE MATEO",
                 subtitle: "Salida 06:45 AM",
                 icon: Icons.home_rounded,
                 pinColor: SmartColors.primaryCrimson,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 2: Parada de Recogida
             Marker(
               point: studentWalkPath.last,
-              width: 140,
-              height: 56,
+              width: isMobile ? 30 : 140,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "PARADA ASIGNADA",
                 subtitle: "Vía Sonadora // 07:05 AM",
                 icon: Icons.directions_bus_rounded,
                 pinColor: SmartColors.deepBlue,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 3: Colegio San José (Destino Escolar)
             Marker(
               point: schoolBusPath.last,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "COLEGIO SAN JOSÉ",
                 subtitle: "Llegada 07:20 AM",
                 icon: Icons.school_rounded,
                 pinColor: SmartColors.smartGreen,
+                isMobile: isMobile,
               ),
             ),
+
+            // Marcadores dinámicos de domicilios de estudiantes registrados con coordenadas GPS
+            ...(_passengers.isNotEmpty ? _passengers : MockData.passengers)
+                .where((s) => s.pickupLatitude != null && s.pickupLongitude != null && s.id != 1)
+                .map((student) {
+              final isAbsent = student.status == PassengerStatus.absent;
+              final isOnboard = student.status == PassengerStatus.onboard;
+              return Marker(
+                point: LatLng(student.pickupLatitude!, student.pickupLongitude!),
+                width: isMobile ? 30 : 145,
+                height: isMobile ? 30 : 56,
+                child: _buildLocationPin(
+                  title: 'CASA: ${student.name.toUpperCase()}',
+                  subtitle: isAbsent
+                      ? 'AUSENTE (Omitida)'
+                      : isOnboard
+                          ? 'A BORDO'
+                          : student.pickupAddress,
+                  icon: Icons.home_rounded,
+                  pinColor: isAbsent
+                      ? SmartColors.smartGray
+                      : isOnboard
+                          ? SmartColors.smartGreen
+                          : SmartColors.deepBlue,
+                  isMobile: isMobile,
+                ),
+              );
+            }),
 
             // Marcador 4: Vehículo Colegial con Movimiento Fluido y Orientación de Rumbo
             Marker(
@@ -1172,81 +1273,100 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   // ==========================================
   // COMPONENTES FLOTANTES DEL CONDUCTOR & MAPA
   // ==========================================
-  Widget _buildDriverHeaderPill(String driverName, dynamic bus) {
+  Widget _buildDriverHeaderPill(String driverName, dynamic bus, {bool isMobile = false}) {
     return GestureDetector(
       onTap: _centerOnBus,
       child: NeumorphicBox(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 10 : 14,
+          vertical: isMobile ? 8 : 10,
+        ),
         borderRadius: BorderRadius.circular(20),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: isMobile ? 32 : 36,
+              height: isMobile ? 32 : 36,
               decoration: BoxDecoration(
                 color: SmartColors.deepBlue.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.airline_seat_recline_normal_rounded, color: SmartColors.deepBlue, size: 20),
+              child: Icon(
+                Icons.airline_seat_recline_normal_rounded,
+                color: SmartColors.deepBlue,
+                size: isMobile ? 18 : 20,
+              ),
             ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'CONDUCTOR ASIGNADO',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: SmartColors.smartGray,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: _isAutoTracking
-                            ? SmartColors.vibrantCyan.withValues(alpha: 0.18)
-                            : SmartColors.primaryCrimson.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _isAutoTracking ? 'GPS ACTIVO' : 'PAUSADO',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w800,
-                          color: _isAutoTracking ? SmartColors.deepBlue : SmartColors.primaryCrimson,
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          isMobile ? 'CONDUCTOR' : 'CONDUCTOR ASIGNADO',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                            color: SmartColors.smartGray,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: _isAutoTracking
+                              ? SmartColors.vibrantCyan.withValues(alpha: 0.18)
+                              : SmartColors.primaryCrimson.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _isAutoTracking ? 'GPS ACTIVO' : 'PAUSADO',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 7.5,
+                            fontWeight: FontWeight.w800,
+                            color: _isAutoTracking ? SmartColors.deepBlue : SmartColors.primaryCrimson,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    driverName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: isMobile ? 12 : 13,
+                      fontWeight: FontWeight.w900,
+                      color: SmartColors.deepBlack,
                     ),
-                  ],
-                ),
-                Text(
-                  driverName,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: SmartColors.deepBlack,
                   ),
-                ),
-                Text(
-                  '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: SmartColors.deepBlue,
+                  Text(
+                    '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: isMobile ? 10 : 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: SmartColors.deepBlue,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(width: 12),
-            StatusChip(text: bus.status),
+            if (!isMobile) ...[
+              const SizedBox(width: 12),
+              StatusChip(text: bus.status),
+            ],
           ],
         ),
       ),
@@ -1437,7 +1557,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
     required String subtitle,
     required IconData icon,
     required Color pinColor,
+    bool isMobile = false,
   }) {
+    if (isMobile) {
+      return Tooltip(
+        message: '$title • $subtitle',
+        triggerMode: TooltipTriggerMode.tap,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: pinColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.2),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.28),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 15, color: Colors.white),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

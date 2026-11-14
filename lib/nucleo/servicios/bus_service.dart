@@ -27,7 +27,8 @@ class BusService {
       final response = await _supabase
           .from('autobuses')
           .select()
-          .order('codigo', ascending: true);
+          .order('codigo', ascending: true)
+          .timeout(const Duration(milliseconds: 2500));
 
       final list = (response as List).map((row) => BusMock.fromMap(row)).toList();
       if (list.isNotEmpty) return list;
@@ -45,13 +46,14 @@ class BusService {
           .from('autobuses')
           .select()
           .eq('codigo', code)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(milliseconds: 2500));
 
-      if (response == null) return null;
+      if (response == null) return MockData.getBusByCode(code);
       return BusMock.fromMap(response);
     } catch (e) {
       debugPrint('Error en getBusByCode: $e');
-      return null;
+      return MockData.getBusByCode(code);
     }
   }
 
@@ -62,7 +64,8 @@ class BusService {
           .from('autobuses')
           .select()
           .eq('dueno_id', ownerId)
-          .order('codigo', ascending: true);
+          .order('codigo', ascending: true)
+          .timeout(const Duration(milliseconds: 2500));
 
       return (response as List).map((row) => BusMock.fromMap(row)).toList();
     } catch (e) {
@@ -71,24 +74,28 @@ class BusService {
     }
   }
 
-  /// Obtiene el autobús asignado al conductor autenticado
+  /// Obtiene el autobús asignado al conductor autenticado en una sola consulta rápida
   Future<BusMock?> getBusByDriver(String driverId) async {
     try {
       final response = await _supabase
           .from('autobuses')
           .select()
-          .eq('conductor_id', driverId)
-          .maybeSingle();
+          .order('codigo', ascending: true)
+          .timeout(const Duration(milliseconds: 2500));
 
-      if (response == null) {
-        // Fallback al primer autobús si aún no se ha asignado explícitamente
-        final all = await getAllBuses();
-        return all.isNotEmpty ? all.first : null;
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      if (rows.isEmpty) {
+        return MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
       }
-      return BusMock.fromMap(response);
+
+      final assignedRow = rows.where((r) => r['conductor_id']?.toString() == driverId).firstOrNull ??
+          rows.where((r) => r['codigo']?.toString() == 'BUS-01').firstOrNull ??
+          rows.first;
+
+      return BusMock.fromMap(assignedRow);
     } catch (e) {
       debugPrint('Error en getBusByDriver: $e');
-      return null;
+      return MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
     }
   }
 

@@ -29,16 +29,16 @@ class StudentHomeScreen extends StatefulWidget {
 }
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
-  StudentPassengerMock? _student;
-  BusMock? _bus;
-  bool _isLoading = true;
+  StudentPassengerMock? _student = MockData.getPrimaryStudent();
+  BusMock? _bus = MockData.getBusByCode('BUS-01');
+  bool _isLoading = false;
   StreamSubscription? _attendanceSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadStudentData();
+      _loadStudentData(silent: true);
       _setupRealtimeSubscription();
     });
   }
@@ -50,7 +50,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   Future<void> _loadStudentData({bool silent = false}) async {
-    if (!silent) {
+    if (!silent && mounted) {
       setState(() => _isLoading = true);
     }
 
@@ -60,12 +60,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final sessionManager = context.read<SessionManager>();
       final session = sessionManager.currentSession;
 
-      // Consultar estudiantes asociados al autobús o tutor
-      final students = await studentService.getStudentsByBus('BUS-01');
+      // Consultar estudiantes y autobús en paralelo (Stale-While-Revalidate + Future.wait)
+      final results = await Future.wait([
+        studentService.getStudentsByBus('BUS-01'),
+        busService.getBusByCode('BUS-01'),
+      ]);
+
+      final students = results[0] as List<StudentPassengerMock>;
+      final fetchedBus = results[1] as BusMock?;
 
       StudentPassengerMock? matchedStudent;
       if (session != null && session.userId.isNotEmpty) {
-        // Intentar emparejar por nombre de tutor o ID
         matchedStudent = students.cast<StudentPassengerMock?>().firstWhere(
               (s) => s != null && (s.parentName.toLowerCase().contains(session.name.toLowerCase()) ||
                   session.name.toLowerCase().contains(s.parentName.toLowerCase())),
@@ -74,7 +79,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       }
 
       final student = matchedStudent ?? (students.isNotEmpty ? students.first : MockData.getPrimaryStudent());
-      final bus = await busService.getBusByCode(student.busCode) ?? MockData.getBusByCode(student.busCode);
+      final bus = (student.busCode == 'BUS-01' ? fetchedBus : await busService.getBusByCode(student.busCode)) ??
+          MockData.getBusByCode(student.busCode);
 
       if (mounted) {
         setState(() {
@@ -87,7 +93,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       debugPrint('Error cargando datos del estudiante: $e');
       if (mounted) {
         setState(() {
-          _student = MockData.getPrimaryStudent();
+          _student ??= MockData.getPrimaryStudent();
           _isLoading = false;
         });
       }

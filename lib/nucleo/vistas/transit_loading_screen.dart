@@ -25,7 +25,7 @@ class TransitLoadingScreen extends StatefulWidget {
     this.title = 'CONECTANDO CON SMARTROUTE',
     this.subtitle = 'Iniciando sesión segura y sincronizando la unidad escolar TBX-492...',
     this.badge = 'AUTENTICACIÓN TRANSIT OS',
-    this.duration = const Duration(milliseconds: 2200),
+    this.duration = const Duration(milliseconds: 280),
     this.onComplete,
   });
 
@@ -36,7 +36,7 @@ class TransitLoadingScreen extends StatefulWidget {
     String title = 'CONECTANDO CON SMARTROUTE',
     String subtitle = 'Iniciando sesión segura y sincronizando la unidad escolar TBX-492...',
     String badge = 'AUTENTICACIÓN TRANSIT OS',
-    Duration duration = const Duration(milliseconds: 2100),
+    Duration duration = const Duration(milliseconds: 280),
   }) {
     context.push(
       '/transit_loading',

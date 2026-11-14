@@ -598,8 +598,11 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 18),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               Text(
                 '¿No tienes cuenta?',
@@ -608,7 +611,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => context.push('/register'),
                 child: Text(
@@ -620,7 +622,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 4),
               GestureDetector(
                 onTap: _showForgotPasswordDialog,
                 child: Text(

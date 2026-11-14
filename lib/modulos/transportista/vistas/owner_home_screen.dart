@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
@@ -26,8 +27,8 @@ class OwnerHomeScreen extends StatefulWidget {
 }
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
-  List<BusMock> _buses = [];
-  List<StudentPassengerMock> _passengers = [];
+  List<BusMock> _buses = MockData.buses;
+  List<StudentPassengerMock> _passengers = MockData.passengers;
   FleetFinancialSummary _financialSummary = const FleetFinancialSummary(
     totalSeats: 36,
     occupiedSeats: 32,
@@ -36,7 +37,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     pendingPaymentsCount: 1,
     totalStudents: 5,
   );
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -227,7 +228,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         Navigator.pop(ctx);
                         try {
                           final studentService = context.read<StudentService>();
-                          await studentService.enrollStudent(
+                          final createdStudent = await studentService.enrollStudent(
                             name: studentName,
                             parentName: parentName,
                             parentPhone: parentPhone,
@@ -235,6 +236,13 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                             bus: selectedBus,
                             schoolName: selectedBus.schoolName ?? 'Colegio San José',
                           );
+                          if (mounted) {
+                            await StudentLocationPickerScreen.open(
+                              context,
+                              student: createdStudent,
+                              initialAddress: pickupAddress,
+                            );
+                          }
                           await _loadFleetData();
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -404,12 +412,16 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                Text(
-                                  'Flota Certificada SmartRoute (Trust & Safety)',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: SmartColors.deepPetrol,
+                                Flexible(
+                                  child: Text(
+                                    'Flota Certificada SmartRoute (Trust & Safety)',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: SmartColors.deepPetrol,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -578,15 +590,20 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'CONTROL DE CUOTAS Y MENSUALIDADES',
-                            style: GoogleFonts.jetBrainsMono(
-                              fontSize: 11,
-                              letterSpacing: 1.2,
-                              fontWeight: FontWeight.w700,
-                              color: SmartColors.deepPetrol,
+                          Expanded(
+                            child: Text(
+                              'CONTROL DE CUOTAS Y MENSUALIDADES',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 11,
+                                letterSpacing: 1.0,
+                                fontWeight: FontWeight.w700,
+                                color: SmartColors.deepPetrol,
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           NeumorphicBox(
                             isPill: true,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

@@ -14,7 +14,10 @@ import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/neumorphic_box.dart';
 import '../../../nucleo/widgets/responsive_layout.dart';
+import '../../../nucleo/utilidades/coordinate_parser.dart';
+import 'package:latlong2/latlong.dart';
 import '../../autenticacion/datos/session_manager.dart';
+import 'student_location_picker_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -224,6 +227,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   prefixIcon: Icons.home_outlined,
                   controller: _pickupAddressCtrl,
                   validator: (val) => Validators.validateRequired(val, fieldName: 'La dirección de recogida'),
+                ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  text: _student.pickupLatitude != null && _student.pickupLongitude != null
+                      ? 'MAPA GPS / COORDENADAS (${CoordinateParser.formatDd(LatLng(_student.pickupLatitude!, _student.pickupLongitude!))})'
+                      : 'SELECCIONAR UBICACIÓN EN MAPA (GPS / DD / DMS)',
+                  icon: Icons.add_location_alt_rounded,
+                  isCyan: true,
+                  onPressed: () async {
+                    final picked = await StudentLocationPickerScreen.open(
+                      context,
+                      student: _student,
+                      initialAddress: _pickupAddressCtrl.text,
+                    );
+                    if (picked != null && mounted) {
+                      setState(() {
+                        _student = _student.copyWith(
+                          pickupLatitude: picked.homePoint.latitude,
+                          pickupLongitude: picked.homePoint.longitude,
+                          pickupAddress: picked.addressLabel,
+                        );
+                        _pickupAddressCtrl.text = picked.addressLabel;
+                      });
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
                 CustomTextField(

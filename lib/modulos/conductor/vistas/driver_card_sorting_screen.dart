@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
-import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
@@ -57,9 +55,6 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
   late List<StudentStopCardItem> _attendingStudents;
   // Estudiantes ausentes (omitidos automáticamente)
   late List<StudentStopCardItem> _absentStudents;
-
-  // Ubicación actual del vehículo en Penonomé
-  final LatLng _busCurrentPos = const LatLng(8.5270, -80.3512);
 
   @override
   void initState() {
@@ -413,35 +408,44 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                     ),
                   ),
 
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 10),
 
                   // Botón Principal: Confirmar y Generar Ruta
-                  ElevatedButton(
-                    onPressed: _confirmAndGenerateRoute,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: SmartColors.deepBlack,
-                      foregroundColor: Colors.white,
-                      elevation: 4,
-                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        side: const BorderSide(color: SmartColors.vibrantCyan, width: 1.2),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.alt_route_rounded, color: SmartColors.vibrantCyan, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Confirmar y Generar Ruta',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                          ),
+                  Flexible(
+                    child: ElevatedButton(
+                      onPressed: _confirmAndGenerateRoute,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: SmartColors.deepBlack,
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: MediaQuery.sizeOf(context).width < 600 ? 14 : 22,
+                          vertical: MediaQuery.sizeOf(context).width < 600 ? 12 : 15,
                         ),
-                      ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          side: const BorderSide(color: SmartColors.vibrantCyan, width: 1.2),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.alt_route_rounded, color: SmartColors.vibrantCyan, size: 18),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Confirmar y Generar Ruta',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: MediaQuery.sizeOf(context).width < 600 ? 12 : 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -579,8 +583,10 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Píldora de distancia y tiempo estimado
-                  Row(
+                  // Píldora de distancia y tiempo estimado (adaptativa en teléfono)
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
@@ -593,18 +599,21 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                           children: [
                             const Icon(Icons.navigation_rounded, size: 10, color: SmartColors.vibrantCyan),
                             const SizedBox(width: 4),
-                            Text(
-                              'A ${student.formattedDistance} de ti',
-                              style: GoogleFonts.jetBrainsMono(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                color: SmartColors.deepBlue,
+                            Flexible(
+                              child: Text(
+                                'A ${student.formattedDistance} de ti',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: SmartColors.deepBlue,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                         decoration: BoxDecoration(
@@ -619,7 +628,7 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                             Text(
                               student.estimatedTime,
                               style: GoogleFonts.jetBrainsMono(
-                                fontSize: 9,
+                                fontSize: 8.5,
                                 fontWeight: FontWeight.w700,
                                 color: SmartColors.smartGray,
                               ),
@@ -667,13 +676,17 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
           children: [
             const Icon(Icons.event_busy_rounded, color: SmartColors.primaryCrimson, size: 16),
             const SizedBox(width: 6),
-            Text(
-              'INASISTENCIAS NOTIFICADAS (OMITIDAS AUTOMÁTICAMENTE)',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: SmartColors.primaryCrimson,
-                letterSpacing: 0.5,
+            Expanded(
+              child: Text(
+                'INASISTENCIAS NOTIFICADAS (OMITIDAS AUTOMÁTICAMENTE)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.primaryCrimson,
+                  letterSpacing: 0.4,
+                ),
               ),
             ),
           ],

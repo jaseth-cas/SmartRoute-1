@@ -52,6 +52,7 @@ class PrimaryButton extends StatelessWidget {
     }
 
     final radius = isPill ? BorderRadius.circular(999) : BorderRadius.circular(20);
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return Container(
       width: double.infinity,
@@ -93,23 +94,28 @@ class PrimaryButton extends StatelessWidget {
           disabledForegroundColor: SmartColors.smartGray,
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: radius),
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 14 : 24),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 19, color: effectiveFg),
-              const SizedBox(width: 10),
+              Icon(icon, size: isMobile ? 17 : 19, color: effectiveFg),
+              SizedBox(width: isMobile ? 8 : 10),
             ],
-            Text(
-              text,
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                letterSpacing: 0.3,
-                color: effectiveFg,
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  fontSize: isMobile ? 13.5 : 15,
+                  letterSpacing: isMobile ? 0.15 : 0.3,
+                  color: effectiveFg,
+                ),
               ),
             ),
           ],

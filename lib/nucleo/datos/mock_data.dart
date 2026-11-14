@@ -327,6 +327,8 @@ class MockData {
       boardingMethod: 'Biometría Facial AI',
       monthlyFee: 65000,
       paymentStatus: 'Al día',
+      pickupLatitude: 8.5284,
+      pickupLongitude: -80.3582,
     ),
     StudentPassengerMock(
       id: 2,
@@ -343,6 +345,8 @@ class MockData {
       boardingMethod: 'Biometría Facial AI',
       monthlyFee: 65000,
       paymentStatus: 'Al día',
+      pickupLatitude: 8.5242,
+      pickupLongitude: -80.3522,
     ),
     StudentPassengerMock(
       id: 3,
@@ -359,6 +363,8 @@ class MockData {
       boardingMethod: null,
       monthlyFee: 65000,
       paymentStatus: 'Pendiente',
+      pickupLatitude: 8.5215,
+      pickupLongitude: -80.3532,
     ),
     StudentPassengerMock(
       id: 5,
@@ -376,6 +382,8 @@ class MockData {
       monthlyFee: 65000,
       paymentStatus: 'Al día',
       photoAsset: 'assets/images/eliam_student.png',
+      pickupLatitude: 8.5186,
+      pickupLongitude: -80.3541,
     ),
     StudentPassengerMock(
       id: 4,
@@ -392,6 +400,8 @@ class MockData {
       boardingMethod: null,
       monthlyFee: 65000,
       paymentStatus: 'Al día',
+      pickupLatitude: 8.5172,
+      pickupLongitude: -80.3540,
     ),
   ];
 
@@ -509,6 +519,8 @@ class MockData {
     String? pickupAddress,
     String? parentPhone,
     String? schoolName,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) {
     final index = passengers.indexWhere((p) => p.id == studentId);
     if (index == -1) return null;
@@ -517,6 +529,8 @@ class MockData {
       pickupAddress: pickupAddress,
       parentPhone: parentPhone,
       schoolName: schoolName,
+      pickupLatitude: pickupLatitude,
+      pickupLongitude: pickupLongitude,
     );
     return passengers[index];
   }

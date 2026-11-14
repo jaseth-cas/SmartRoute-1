@@ -26,16 +26,16 @@ class DriverDemandScreen extends StatefulWidget {
 
 class _DriverDemandScreenState extends State<DriverDemandScreen> {
   String _selectedFilter = 'Todos';
-  BusMock? _bus;
-  List<StudentPassengerMock> _allPassengers = [];
-  bool _isLoading = true;
+  BusMock? _bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
+  List<StudentPassengerMock> _allPassengers = MockData.getPassengersByBus('BUS-01');
+  bool _isLoading = false;
   StreamSubscription? _attendanceSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadManifest();
+      _loadManifest(silent: true);
       _subscribeToRealtimeAttendance();
     });
   }
@@ -58,7 +58,7 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
   }
 
   Future<void> _loadManifest({bool silent = false}) async {
-    if (!silent) {
+    if (!silent && mounted) {
       setState(() => _isLoading = true);
     }
 
@@ -67,20 +67,26 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       final studentService = context.read<StudentService>();
       final session = context.read<SessionManager>().currentSession;
 
-      BusMock? assignedBus;
-      if (session != null && session.userId.isNotEmpty) {
-        assignedBus = await busService.getBusByDriver(session.userId);
-      }
+      // Ejecutar consulta de bus y estudiantes en paralelo con Future.wait
+      final results = await Future.wait([
+        (session != null && session.userId.isNotEmpty)
+            ? busService.getBusByDriver(session.userId)
+            : busService.getBusByCode('BUS-01'),
+        studentService.getStudentsByBus('BUS-01'),
+      ]);
 
-      final bus = assignedBus ??
-          await busService.getBusByCode('BUS-01') ??
-          (await busService.getAllBuses()).first;
-      final passengers = await studentService.getStudentsByBus(bus.code);
+      final bus = (results[0] as BusMock?) ??
+          MockData.getBusByCode('BUS-01') ??
+          MockData.buses.first;
+
+      final passengers = bus.code == 'BUS-01'
+          ? (results[1] as List<StudentPassengerMock>)
+          : await studentService.getStudentsByBus(bus.code);
 
       if (mounted) {
         setState(() {
           _bus = bus;
-          _allPassengers = passengers;
+          _allPassengers = passengers.isNotEmpty ? passengers : MockData.getPassengersByBus(bus.code);
           _isLoading = false;
         });
       }
@@ -88,8 +94,10 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       debugPrint('Error cargando manifiesto de conductor: $e');
       if (mounted) {
         setState(() {
-          _bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-          _allPassengers = MockData.getPassengersByBus(_bus!.code);
+          _bus ??= MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
+          if (_allPassengers.isEmpty) {
+            _allPassengers = MockData.getPassengersByBus(_bus!.code);
+          }
           _isLoading = false;
         });
       }

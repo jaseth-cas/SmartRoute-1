@@ -164,7 +164,6 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
       debugPrint('Error sincronizando bus: $e');
     }
     await _determinePosition();
-    await Future.delayed(const Duration(milliseconds: 400));
     if (mounted) {
       setState(() => isUpdating = false);
     }
@@ -356,6 +355,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   // Mapa Interactivo con Rutas en Vivo Conectadas (Casa de Estudiante -> Parada -> Escuela)
   Widget _buildMapView(dynamic bus) {
     final busPos = schoolBusPath[currentPointIndex];
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return FlutterMap(
       mapController: _mapController,
@@ -405,39 +405,42 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             // Marcador 1: Casa del Estudiante (Punto de Origen)
             Marker(
               point: studentWalkPath.first,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "CASA DE MATEO",
                 subtitle: "Salida 06:45 AM",
                 icon: Icons.home_rounded,
                 pinColor: SmartColors.primaryCrimson,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 2: Parada de Recogida (Punto de Conexión en Vía hacia Sonadora)
             Marker(
               point: studentWalkPath.last,
-              width: 140,
-              height: 56,
+              width: isMobile ? 30 : 140,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "PARADA ASIGNADA",
                 subtitle: "Vía Sonadora // 07:05 AM",
                 icon: Icons.directions_bus_rounded,
                 pinColor: SmartColors.deepBlue,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 3: Colegio San José (Destino Escolar)
             Marker(
               point: schoolBusPath.last,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "COLEGIO SAN JOSÉ",
                 subtitle: "Llegada 07:20 AM",
                 icon: Icons.school_rounded,
                 pinColor: SmartColors.smartGreen,
+                isMobile: isMobile,
               ),
             ),
 
@@ -1748,7 +1751,32 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     required String subtitle,
     required IconData icon,
     required Color pinColor,
+    bool isMobile = false,
   }) {
+    if (isMobile) {
+      return Tooltip(
+        message: '$title • $subtitle',
+        triggerMode: TooltipTriggerMode.tap,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: pinColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.2),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 15, color: Colors.white),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
