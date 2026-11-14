@@ -23,7 +23,7 @@ class RoleSwitcherBar extends StatelessWidget {
     final targetRoute = role == UserRole.student
         ? '/student_home'
         : role == UserRole.driver
-            ? '/driver_home'
+            ? '/driver_welcome_splash'
             : '/owner_home';
 
     final roleLabel = role == UserRole.student

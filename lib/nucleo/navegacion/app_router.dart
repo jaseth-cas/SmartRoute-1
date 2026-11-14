@@ -22,6 +22,9 @@ import 'package:smartroute_flutter/modulos/conductor/vistas/driver_home_screen.d
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_demand_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/report_incident_screen.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/facial_checkin_screen.dart';
+import 'package:smartroute_flutter/modulos/conductor/vistas/driver_welcome_splash_screen.dart';
+import 'package:smartroute_flutter/modulos/conductor/vistas/driver_card_sorting_screen.dart';
+import 'package:smartroute_flutter/modulos/conductor/vistas/driver_dijkstra_routing_screen.dart';
 import 'package:smartroute_flutter/modulos/transportista/vistas/owner_home_screen.dart';
 import 'package:smartroute_flutter/modulos/transportista/vistas/owner_map_screen.dart';
 import 'package:smartroute_flutter/modulos/transportista/vistas/register_bus_screen.dart';
@@ -85,7 +88,7 @@ class AppRouter {
               final targetRoute = role == UserRole.student
                   ? '/student_home'
                   : role == UserRole.driver
-                      ? '/driver_home'
+                      ? '/driver_welcome_splash'
                       : '/owner_home';
               TransitLoadingScreen.open(
                 context,
@@ -192,6 +195,27 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(
             child: EditProfileScreen(),
           ),
+        ),
+        GoRoute(
+          path: '/driver_welcome_splash',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: DriverWelcomeSplashScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/driver_card_sorting',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: DriverCardSortingScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/driver_dijkstra_routing',
+          pageBuilder: (context, state) {
+            final students = state.extra as List<StudentStopCardItem>?;
+            return NoTransitionPage(
+              child: DriverDijkstraRoutingScreen(orderedStudents: students),
+            );
+          },
         ),
         GoRoute(
           path: '/driver_home',
