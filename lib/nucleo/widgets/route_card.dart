@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
-import 'smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'status_chip.dart';
 
 class RouteCard extends StatelessWidget {
@@ -18,101 +19,172 @@ class RouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SmartRouteCard(
+    return NeumorphicBox(
+      padding: const EdgeInsets.all(20),
+      borderRadius: BorderRadius.circular(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Icono en cápsula neumórfica
               Container(
-                width: 40,
-                height: 40,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: SmartColors.smartLightBlue,
-                  borderRadius: BorderRadius.circular(8),
+                  color: SmartColors.deepBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.map, color: SmartColors.smartBlue),
+                alignment: Alignment.center,
+                child: const Icon(Icons.alt_route_rounded, color: SmartColors.deepBlue, size: 24),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
+                        // Código técnico tipo Quivox ("COMPOUND 1")
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: SmartColors.deepBlack,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            route.code,
+                            style: GoogleFonts.jetBrainsMono(
+                              color: SmartColors.vibrantCyan,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             route.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: SmartColors.smartText,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15.5,
+                              color: SmartColors.deepBlack,
+                              letterSpacing: -0.2,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (route.isFavorite) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.favorite, color: Colors.red, size: 16),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.favorite_rounded, color: SmartColors.primaryCrimson, size: 18),
                         ],
                       ],
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       '${route.origin} → ${route.destination}',
-                      style: const TextStyle(fontSize: 12, color: SmartColors.smartGray),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12.5,
+                        color: SmartColors.smartGray,
+                        height: 1.25,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
+          const SizedBox(height: 14),
+          Row(
             children: [
               StatusChip(text: route.status),
+              const SizedBox(width: 8),
               if (route.status == 'Activa' && route.etaMinutes != null)
-                StatusChip(text: 'ETA: ${route.etaMinutes} min')
+                StatusChip(text: 'ETA ${route.etaMinutes} MIN')
               else if (route.status == 'Inactiva')
-                const StatusChip(text: 'Fuera de servicio'),
+                const StatusChip(text: 'FUERA DE SERVICIO'),
+              const Spacer(),
+              if (route.busCode != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: SmartColors.neuInset,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.directions_bus_rounded, size: 13, color: SmartColors.deepBlue),
+                      const SizedBox(width: 5),
+                      Text(
+                        route.busCode!,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: SmartColors.deepBlue,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
-          if (route.busCode != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Bus asignado: ${route.busCode}',
-              style: const TextStyle(
-                fontSize: 11,
-                color: SmartColors.smartBlue,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
+          // Botones de acción en cápsula Quivox
           Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: onDetailClick,
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    side: const BorderSide(color: SmartColors.smartBorder),
+                child: GestureDetector(
+                  onTap: onDetailClick,
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: SmartColors.neuInset,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'DETALLES',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: SmartColors.deepBlack,
+                      ),
+                    ),
                   ),
-                  child: const Text('Ver detalle', style: TextStyle(fontSize: 12, color: SmartColors.smartBlue)),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton(
-                  onPressed: onStopsClick,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: SmartColors.smartLightBlue,
-                    foregroundColor: SmartColors.smartBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 0,
+                child: GestureDetector(
+                  onTap: onStopsClick,
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: SmartColors.deepBlack,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                          offset: const Offset(0, 3),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'VER PARADAS',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: SmartColors.ghostWhite,
+                      ),
+                    ),
                   ),
-                  child: const Text('Ver paradas', style: TextStyle(fontSize: 12)),
                 ),
               ),
             ],

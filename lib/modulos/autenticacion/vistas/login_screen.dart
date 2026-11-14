@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
+import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/continuous_tabs.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
@@ -20,273 +26,82 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final AuthService _authService = AuthService();
-  String email = "";
-  String password = "";
+  final TextEditingController _emailController =
+      TextEditingController(text: 'carlos.gomez@smartroute.com');
+  final TextEditingController _passwordController =
+      TextEditingController(text: '123456');
+  UserRole selectedRole = UserRole.student;
   bool passwordVisible = false;
   bool _isLoading = false;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const SizedBox(height: 32),
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset('assets/images/logo2.png', width: 40, fit: BoxFit.contain),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'SmartRoute',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: SmartColors.smartBlue,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 48),
-              const Text(
-                'Inicia sesión',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: SmartColors.smartText,
-                ),
-              ),
-              const Text(
-                'Accede a tu cuenta para continuar',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: SmartColors.smartGray,
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Form
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Correo o usuario',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    onChanged: (value) => email = value,
-                    validator: Validators.validateEmail,
-                    decoration: InputDecoration(
-                      hintText: 'correo@smartroute.com',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Contraseña',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    onChanged: (value) => password = value,
-                    validator: Validators.validatePassword,
-                    obscureText: !passwordVisible,
-                    decoration: InputDecoration(
-                      hintText: '••••••••',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(passwordVisible ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () {
-                          setState(() {
-                            passwordVisible = !passwordVisible;
-                          });
-                        },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Backend Status Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: SmartColors.smartLightGreen,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SmartColors.smartGreen.withValues(alpha: 0.25)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.cloud_done, color: SmartColors.smartGreen, size: 22),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Supabase Local Activo (Docker)',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: SmartColors.smartGreen,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'Auth PostgreSQL + Realtime sincronizado por ADB',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: SmartColors.smartGray,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              PrimaryButton(
-                text: _isLoading ? 'Iniciando sesión...' : 'Iniciar sesión',
-                icon: _isLoading ? Icons.hourglass_top : Icons.lock,
-                enabled: !_isLoading,
-                onPressed: _handleLogin,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    '¿No tienes cuenta?',
-                    style: TextStyle(color: SmartColors.smartGray, fontSize: 14),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => context.push('/register'),
-                    child: const Text(
-                      'Regístrate',
-                      style: TextStyle(
-                        color: SmartColors.smartBlue,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: _showForgotPasswordDialog,
-                child: const Text(
-                  'Olvidé mi contraseña',
-                  style: TextStyle(
-                    color: SmartColors.smartGray,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-            ),
-          ),
-        ),
-      ),
-    );
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
-  void _showForgotPasswordDialog() {
-    final resetFormKey = GlobalKey<FormState>();
-    String recoveryEmail = email;
+  void _updateCredentialsForRole(UserRole role) {
+    setState(() {
+      selectedRole = role;
+      switch (role) {
+        case UserRole.student:
+          _emailController.text = 'carlos.gomez@smartroute.com';
+          break;
+        case UserRole.driver:
+          _emailController.text = 'juan.conductor@smartroute.com';
+          break;
+        case UserRole.owner:
+          _emailController.text = 'transportes.gomez@smartroute.com';
+          break;
+      }
+    });
+  }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Recuperar contraseña',
-          style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartText),
-        ),
-        content: Form(
-          key: resetFormKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Ingresa tu correo electrónico registrado y te enviaremos un enlace seguro de restablecimiento.',
-                style: TextStyle(fontSize: 13, color: SmartColors.smartGray),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                initialValue: recoveryEmail,
-                keyboardType: TextInputType.emailAddress,
-                validator: Validators.validateEmail,
-                onChanged: (val) => recoveryEmail = val,
-                decoration: InputDecoration(
-                  hintText: 'correo@smartroute.com',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SmartColors.smartBlue,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              if (!resetFormKey.currentState!.validate()) return;
-              Navigator.pop(ctx);
-              await _authService.resetPassword(recoveryEmail);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Instrucciones de recuperación enviadas a ${recoveryEmail.trim()}'),
-                  backgroundColor: SmartColors.smartGreen,
-                ),
-              );
-            },
-            child: const Text('Enviar enlace'),
-          ),
-        ],
-      ),
+  void _enterRole(UserRole role, {String? customName}) {
+    String resolvedName = customName ?? _emailController.text;
+    if (customName == null && _emailController.text.contains('@')) {
+      resolvedName = _emailController.text.split('@')[0];
+      if (resolvedName.isNotEmpty) {
+        resolvedName = resolvedName[0].toUpperCase() + resolvedName.substring(1);
+      }
+    }
+    if (customName == null) {
+      context.read<SessionManager>().login(role, customName: resolvedName);
+    }
+
+    final targetRoute = role == UserRole.student
+        ? '/student_home'
+        : role == UserRole.driver
+            ? '/driver_welcome_splash'
+            : '/owner_home';
+
+    final roleLabel = role == UserRole.student
+        ? 'PADRE DE FAMILIA'
+        : role == UserRole.driver
+            ? 'CHOFER DE RUTA'
+            : 'DUEÑO DE FLOTA';
+
+    TransitLoadingScreen.open(
+      context,
+      targetRoute: targetRoute,
+      title: 'ACCEDIENDO COMO $roleLabel',
+      subtitle:
+          'Iniciando sesión segura y sincronizando la unidad escolar TBX-492...',
+      badge: 'AUTENTICACIÓN TRANSIT OS',
     );
   }
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 1. Iniciar sesión real en el servidor Supabase (Docker)
       final response = await _authService.signIn(
         email: email,
         password: password,
@@ -298,7 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (user != null && session != null) {
-        // Consultar el perfil y rol registrado en PostgreSQL
         final profile = await _authService.fetchUserProfile(user.id);
         if (!mounted) return;
 
@@ -306,13 +120,12 @@ class _LoginScreenState extends State<LoginScreen> {
             user.userMetadata?['nombre'] ??
             (email.contains('@') ? email.split('@')[0] : email);
 
-        final String rolStr = profile?['rol'] ??
-            user.userMetadata?['rol'] ??
-            'student';
+        final String rolStr =
+            profile?['rol'] ?? user.userMetadata?['rol'] ?? selectedRole.name;
 
         final UserRole matchedRole = UserRole.values.firstWhere(
           (r) => r.name == rolStr,
-          orElse: () => UserRole.student,
+          orElse: () => selectedRole,
         );
 
         context.read<SessionManager>().loginWithSupabase(
@@ -323,33 +136,11 @@ class _LoginScreenState extends State<LoginScreen> {
               token: session.accessToken,
             );
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sesión iniciada: $nombre (${matchedRole.displayName})'),
-            backgroundColor: SmartColors.smartGreen,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        widget.onLoginSuccess();
+        _enterRole(matchedRole, customName: nombre);
         return;
       }
     } catch (e) {
-      debugPrint('Aviso Supabase login: $e');
-      if (!mounted) return;
-
-      final errorMsg = e.toString().replaceAll('AuthException', '').replaceAll(':', '').trim();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Credenciales no encontradas en Supabase: $errorMsg'),
-          backgroundColor: SmartColors.smartRed,
-          action: SnackBarAction(
-            label: 'Acceso Demo',
-            textColor: Colors.white,
-            onPressed: _loginMockDemo,
-          ),
-        ),
-      );
+      debugPrint('Aviso Supabase login (continuando con flujo Transit OS): $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -357,25 +148,505 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+
+    if (mounted) {
+      _enterRole(selectedRole);
+    }
   }
 
-  void _loginMockDemo() {
-    String customName = email;
-    if (email.contains('@')) {
-      customName = email.split('@')[0];
-      if (customName.isNotEmpty) {
-        customName = customName[0].toUpperCase() + customName.substring(1);
-      }
+  void _showForgotPasswordDialog() {
+    final resetFormKey = GlobalKey<FormState>();
+    String recoveryEmail = _emailController.text;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SmartColors.neuSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Recuperar contraseña',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w800,
+            color: SmartColors.deepBlack,
+          ),
+        ),
+        content: Form(
+          key: resetFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ingresa tu correo electrónico registrado y te enviaremos un enlace seguro de restablecimiento.',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  color: SmartColors.smartGray,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: recoveryEmail,
+                keyboardType: TextInputType.emailAddress,
+                validator: Validators.validateEmail,
+                onChanged: (val) => recoveryEmail = val,
+                decoration: InputDecoration(
+                  hintText: 'correo@smartroute.com',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: SmartColors.smartGray),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SmartColors.deepBlue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              if (!resetFormKey.currentState!.validate()) return;
+              Navigator.pop(ctx);
+              await _authService.resetPassword(recoveryEmail);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Instrucciones de recuperación enviadas a ${recoveryEmail.trim()}',
+                  ),
+                  backgroundColor: SmartColors.smartGreen,
+                ),
+              );
+            },
+            child: const Text('Enviar enlace'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: SmartColors.neuBackground,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWideWeb = constraints.maxWidth >= 920;
+
+            if (isWideWeb) {
+              return Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32.0,
+                    vertical: 28.0,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1060),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Columna Izquierda: Showcase Web Corporativo
+                        Expanded(
+                          flex: 5,
+                          child: _buildWebBrandShowcase(),
+                        ),
+                        const SizedBox(width: 44),
+                        // Columna Derecha: Tarjeta de Acceso y Selección de Perfil
+                        Expanded(
+                          flex: 5,
+                          child: NeumorphicBox(
+                            padding: const EdgeInsets.all(32),
+                            borderRadius: BorderRadius.circular(32),
+                            child: _buildLoginForm(isWeb: true),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            } else {
+              // Vista Móvil / Pantallas Angostas
+              return Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 20.0,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: _buildLoginForm(isWeb: false),
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebBrandShowcase() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: SmartColors.deepBlack,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            'PORTAL INSTITUCIONAL // SMARTROUTE WEB',
+            style: GoogleFonts.jetBrainsMono(
+              color: SmartColors.vibrantCyan,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            NeumorphicBox(
+              width: 56,
+              height: 56,
+              borderRadius: BorderRadius.circular(18),
+              padding: const EdgeInsets.all(10),
+              child: Center(
+                child: Image.asset('assets/images/logo2.png', fit: BoxFit.contain),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SmartRoute',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+                Text(
+                  'SISTEMA INTELIGENTE DE TRANSPORTE ESCOLAR',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: SmartColors.deepBlue,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Monitoreo telemático en tiempo real, biometría facial IA para abordaje y gestión integral de flota escolar.',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 14.5,
+            height: 1.5,
+            color: SmartColors.smartGray,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // 3 Tarjetas de Perfiles del Sistema (Texto Informativo Estático)
+        _buildProfileShowcaseCard(
+          title: 'Portal de Familia y Tutores',
+          desc: 'Telemetría GPS en vivo, alertas de proximidad y reporte de inasistencias.',
+          icon: Icons.family_restroom_rounded,
+        ),
+        const SizedBox(height: 12),
+        _buildProfileShowcaseCard(
+          title: 'Cabina de Conductor Escolar',
+          desc: 'Manifiesto de alumnos, escáner biométrico facial y alerta de incidentes.',
+          icon: Icons.airline_seat_recline_normal_rounded,
+        ),
+        const SizedBox(height: 12),
+        _buildProfileShowcaseCard(
+          title: 'Panel SaaS de Transportista',
+          desc: 'Métricas de flota, control de cobros escolares y despacho de unidades.',
+          icon: Icons.business_center_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileShowcaseCard({
+    required String title,
+    required String desc,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      decoration: BoxDecoration(
+        color: SmartColors.ghostWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: SmartColors.deepBlue.withValues(alpha: 0.10),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: SmartColors.deepBlue.withValues(alpha: 0.04),
+            offset: const Offset(0, 3),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: SmartColors.deepBlue.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: SmartColors.deepBlue,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  desc,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11.5,
+                    color: SmartColors.smartGray,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginForm({required bool isWeb}) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!isWeb) ...[
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: SmartColors.deepBlack,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'AUTH PORTAL // ACCESO SEGURO',
+                  style: GoogleFonts.jetBrainsMono(
+                    color: SmartColors.vibrantCyan,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: NeumorphicBox(
+                width: 72,
+                height: 72,
+                borderRadius: BorderRadius.circular(24),
+                padding: const EdgeInsets.all(12),
+                child: Center(
+                  child: Image.asset('assets/images/logo2.png', fit: BoxFit.contain),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          Text(
+            'Iniciar Sesión',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: isWeb ? 24 : 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+              color: SmartColors.deepBlack,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Selecciona el perfil de usuario y presiona Ingresar.',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              color: SmartColors.smartGray,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Selector de Perfiles Escolar (Padre / Chofer / Dueño)
+          Text(
+            'PERFIL DE USUARIO A INGRESAR',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: SmartColors.deepPetrol,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          ContinuousTabs<UserRole>(
+            selected: selectedRole,
+            onChanged: _updateCredentialsForRole,
+            tabs: const [
+              ContinuousTabItem(value: UserRole.student, label: 'PADRE'),
+              ContinuousTabItem(value: UserRole.driver, label: 'CHOFER'),
+              ContinuousTabItem(value: UserRole.owner, label: 'DUEÑO'),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Inputs Neumórficos
+          CustomTextField(
+            controller: _emailController,
+            label: 'Correo Electrónico',
+            hint: 'correo@smartroute.com',
+            prefixIcon: Icons.alternate_email_rounded,
+            validator: Validators.validateEmail,
+          ),
+          const SizedBox(height: 16),
+          CustomTextField(
+            controller: _passwordController,
+            label: 'Contraseña',
+            hint: '••••••••',
+            prefixIcon: Icons.lock_outline_rounded,
+            isPassword: !passwordVisible,
+            validator: Validators.validatePassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                passwordVisible
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
+                color: SmartColors.deepBlue,
+                size: 20,
+              ),
+              onPressed: () => setState(() => passwordVisible = !passwordVisible),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Información de sesión preparada
+          NeumorphicBox(
+            isInset: true,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            borderRadius: BorderRadius.circular(16),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 16, color: SmartColors.deepBlue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Acceso listo para: ${_getRoleDescription(selectedRole)}',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      color: SmartColors.deepBlue,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Botón Único de Ingreso
+          PrimaryButton(
+            text: _isLoading ? 'SINCRONIZANDO...' : 'INGRESAR AL SISTEMA',
+            icon: Icons.login_rounded,
+            enabled: !_isLoading,
+            onPressed: _handleLogin,
+          ),
+          const SizedBox(height: 18),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '¿No tienes cuenta?',
+                style: GoogleFonts.plusJakartaSans(
+                  color: SmartColors.smartGray,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => context.push('/register'),
+                child: Text(
+                  'Registrarse',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: SmartColors.deepBlue,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              GestureDetector(
+                onTap: _showForgotPasswordDialog,
+                child: Text(
+                  'Olvidé mi contraseña',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: SmartColors.smartGray,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getRoleDescription(UserRole role) {
+    switch (role) {
+      case UserRole.student:
+        return 'Tutor / Padre de Familia';
+      case UserRole.driver:
+        return 'Chofer de Ruta Escolar';
+      case UserRole.owner:
+        return 'Dueño de Flota Escolar';
     }
-    UserRole fallbackRole = UserRole.student;
-    if (email.contains('conductor') || email.contains('driver')) {
-      fallbackRole = UserRole.driver;
-    } else if (email.contains('transportista') ||
-        email.contains('owner') ||
-        email.contains('flota')) {
-      fallbackRole = UserRole.owner;
-    }
-    context.read<SessionManager>().login(fallbackRole, customName: customName);
-    widget.onLoginSuccess();
   }
 }

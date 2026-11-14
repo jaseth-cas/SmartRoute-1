@@ -4,15 +4,14 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
-/// Pantalla de Monitoreo GPS de Flota para el Transportista / Dueño de Autobuses.
-/// Muestra todas las unidades escolares activas en un mapa OpenStreetMap real con
-/// telemetría interactiva, velocidad, chofer asignado y capacidad de cupos.
 class OwnerMapScreen extends StatefulWidget {
   const OwnerMapScreen({super.key});
 
@@ -133,292 +132,315 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
     final bus2Pos = _bus2Route[_bus2Index];
 
     return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
-      appBar: AppBar(
-        title: const Text(
-          'Monitoreo GPS de Flota',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: SmartColors.smartBlue),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/owner_home');
-            }
-          },
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Centrar en flota',
-            icon: const Icon(Icons.my_location, color: SmartColors.smartBlue),
-            onPressed: () {
-              _mapController.move(const LatLng(9.9340, -84.0780), 15.0);
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Banner de estado de la flota
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-            color: Colors.white,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: SmartColors.smartGreen,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${buses.length} Unidades en Operación',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: SmartColors.smartText),
-                    ),
-                  ],
+      backgroundColor: SmartColors.neuBackground,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Mapa satelital interactivo
+            Positioned.fill(
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: const LatLng(9.9340, -84.0780),
+                  initialZoom: 15.2,
+                  minZoom: 12.0,
+                  maxZoom: 18.0,
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _isRealtimeActive ? SmartColors.smartLightGreen : SmartColors.smartLightBlue,
-                    borderRadius: BorderRadius.circular(8),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.smartroute.smartroute_flutter',
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _isRealtimeActive ? Icons.wifi : Icons.gps_fixed,
-                        size: 12,
-                        color: _isRealtimeActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _bus1Route,
+                        color: SmartColors.deepPetrol.withValues(alpha: 0.6),
+                        strokeWidth: 4.5,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _isRealtimeActive ? 'Realtime Conectado' : 'GPS Satelital Activo',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: _isRealtimeActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                      Polyline(
+                        points: _bus2Route,
+                        color: SmartColors.electricCyan.withValues(alpha: 0.6),
+                        strokeWidth: 3.5,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      for (int i = 0; i < buses.length; i++) ...[
+                        () {
+                          final bus = buses[i];
+                          final pos = i == 0
+                              ? bus1Pos
+                              : (i == 1
+                                  ? bus2Pos
+                                  : LatLng(
+                                      bus.latitude ?? (9.9340 + (0.0015 * i)),
+                                      bus.longitude ?? (-84.0780 + (0.0015 * i)),
+                                    ));
+                          return Marker(
+                            point: pos,
+                            width: 74,
+                            height: 74,
+                            child: GestureDetector(
+                              onTap: () => _centerOnBus(pos, bus),
+                              child: _BusGpsMarker(
+                                code: bus.code,
+                                isSelected: _selectedBus?.code == bus.code,
+                              ),
+                            ),
+                          );
+                        }(),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // HUD Superior Flotante Quivox
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 820),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          NeumorphicBox(
+                            isPill: true,
+                            padding: const EdgeInsets.all(12),
+                            onTap: () {
+                              if (context.canPop()) {
+                                context.pop();
+                              } else {
+                                context.go('/owner_home');
+                              }
+                            },
+                            child: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              size: 16,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                          NeumorphicBox(
+                            isPill: true,
+                            isDark: true,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _isRealtimeActive ? SmartColors.smartGreen : SmartColors.electricCyan,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${buses.length} UNIDADES EN VIVO',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.0,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          NeumorphicBox(
+                            isPill: true,
+                            padding: const EdgeInsets.all(12),
+                            onTap: () {
+                              _mapController.move(const LatLng(9.9340, -84.0780), 15.0);
+                            },
+                            child: const Icon(
+                              Icons.my_location_rounded,
+                              size: 18,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Selector de unidades flotante
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            for (int i = 0; i < buses.length; i++) ...[
+                              NeumorphicBox(
+                                isPill: true,
+                                isDark: _selectedBus?.code == buses[i].code,
+                                onTap: () {
+                                  final targetPos = i == 0
+                                      ? bus1Pos
+                                      : (i == 1
+                                          ? bus2Pos
+                                          : LatLng(
+                                              buses[i].latitude ?? (9.9340 + (0.0015 * i)),
+                                              buses[i].longitude ?? (-84.0780 + (0.0015 * i)),
+                                            ));
+                                  _centerOnBus(targetPos, buses[i]);
+                                },
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: Text(
+                                  buses[i].code,
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.8,
+                                    color: _selectedBus?.code == buses[i].code
+                                        ? SmartColors.electricCyan
+                                        : SmartColors.deepBlack,
+                                  ),
+                                ),
+                              ),
+                              if (i < buses.length - 1) const SizedBox(width: 8),
+                            ],
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          // Mapa interactivo OpenStreetMap
-          Expanded(
-            flex: 3,
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: const LatLng(9.9340, -84.0780),
-                initialZoom: 15.2,
-                minZoom: 12.0,
-                maxZoom: 18.0,
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.smartroute.smartroute_flutter',
-                ),
-                // Trazo de ruta escolar
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _bus1Route,
-                      color: SmartColors.smartBlue.withValues(alpha: 0.6),
-                      strokeWidth: 4.0,
-                    ),
-                  ],
-                ),
-                // Marcadores dinámicos para todos los autobuses
-                MarkerLayer(
-                  markers: [
-                    for (int i = 0; i < buses.length; i++) ...[
-                      () {
-                        final bus = buses[i];
-                        final pos = i == 0
-                            ? bus1Pos
-                            : (i == 1
-                                ? bus2Pos
-                                : LatLng(bus.latitude ?? (9.9340 + (0.0015 * i)), bus.longitude ?? (-84.0780 + (0.0015 * i))));
-                        final markerColor = i == 0
-                            ? SmartColors.smartBlue
-                            : (i == 1 ? SmartColors.smartGreen : SmartColors.smartDarkBlue);
-
-                        return Marker(
-                          point: pos,
-                          width: 70,
-                          height: 70,
-                          child: GestureDetector(
-                            onTap: () => _centerOnBus(pos, bus),
-                            child: _BusGpsMarker(
-                              code: bus.code,
-                              color: markerColor,
-                              isSelected: _selectedBus?.code == bus.code,
-                            ),
-                          ),
-                        );
-                      }(),
-                    ],
-                  ],
-                ),
-              ],
             ),
-          ),
 
-          // Tarjeta interactiva del autobús seleccionado
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Tarjeta Inferior de Telemetría Quivox
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 20,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 820),
+                  child: NeumorphicBox(
+                    borderRadius: 26,
+                    padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: SmartColors.smartLightBlue,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.directions_bus, color: SmartColors.smartBlue, size: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
                           children: [
-                            Text(
-                              _selectedBus?.code ?? 'BUS-01',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            NeumorphicBox(
+                              isPill: true,
+                              isDark: true,
+                              padding: const EdgeInsets.all(10),
+                              child: const Icon(
+                                Icons.directions_bus_rounded,
+                                color: SmartColors.electricCyan,
+                                size: 20,
+                              ),
                             ),
-                            Text(
-                              _selectedBus?.model ?? 'Toyota Coaster Escolar',
-                              style: const TextStyle(fontSize: 12, color: SmartColors.smartGray),
+                            const SizedBox(width: 14),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _selectedBus?.code ?? 'BUS-01',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    color: SmartColors.deepBlack,
+                                  ),
+                                ),
+                                Text(
+                                  _selectedBus?.model ?? 'Toyota HiAce',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: SmartColors.deepPetrol.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _selectedBus?.status == 'En recorrido'
-                            ? SmartColors.smartLightGreen
-                            : SmartColors.smartLightBlue,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _selectedBus?.status ?? 'En servicio',
-                        style: TextStyle(
-                          color: _selectedBus?.status == 'En recorrido'
-                              ? SmartColors.smartGreen
-                              : SmartColors.smartBlue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _TelemetryItem(
-                      icon: Icons.person,
-                      label: 'Chofer',
-                      value: _selectedBus?.driverName ?? 'Juan Pérez',
-                    ),
-                    _TelemetryItem(
-                      icon: Icons.event_seat,
-                      label: 'Cupos',
-                      value: '${_selectedBus?.seatsOccupied ?? 14}/${_selectedBus?.capacity ?? 16}',
-                    ),
-                    _TelemetryItem(
-                      icon: Icons.speed,
-                      label: 'Velocidad',
-                      value: '${_selectedBus?.currentSpeedKmH ?? 38} km/h',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (int i = 0; i < buses.length; i++) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color: _selectedBus?.code == buses[i].code
-                                    ? SmartColors.smartBlue
-                                    : SmartColors.smartBorder,
-                                width: _selectedBus?.code == buses[i].code ? 2 : 1,
-                              ),
-                              backgroundColor: _selectedBus?.code == buses[i].code
-                                  ? SmartColors.smartLightBlue.withValues(alpha: 0.3)
-                                  : Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            ),
-                            onPressed: () {
-                              final targetPos = i == 0
-                                  ? bus1Pos
-                                  : (i == 1
-                                      ? bus2Pos
-                                      : LatLng(buses[i].latitude ?? (9.9340 + (0.0015 * i)),
-                                          buses[i].longitude ?? (-84.0780 + (0.0015 * i))));
-                              _centerOnBus(targetPos, buses[i]);
-                            },
-                            child: Text(
-                              'Ver ${buses[i].code}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _selectedBus?.code == buses[i].code
-                                    ? SmartColors.smartBlue
-                                    : SmartColors.smartGray,
-                              ),
+                        NeumorphicBox(
+                          isPill: true,
+                          isDark: true,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          child: Text(
+                            (_selectedBus?.status ?? 'EN SERVICIO').toUpperCase(),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: SmartColors.electricCyan,
                             ),
                           ),
                         ),
                       ],
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Contenedor Inset con datos telemáticos
+                    NeumorphicBox(
+                      isInset: true,
+                      borderRadius: 18,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _TelemetryItem(
+                            label: 'CHOFER',
+                            value: _selectedBus?.driverName ?? 'Juan Pérez',
+                          ),
+                          Container(
+                            width: 1,
+                            height: 28,
+                            color: SmartColors.deepPetrol.withValues(alpha: 0.15),
+                          ),
+                          _TelemetryItem(
+                            label: 'CUPOS',
+                            value:
+                                '${_selectedBus?.seatsOccupied ?? 14}/${_selectedBus?.capacity ?? 16}',
+                          ),
+                          Container(
+                            width: 1,
+                            height: 28,
+                            color: SmartColors.deepPetrol.withValues(alpha: 0.15),
+                          ),
+                          _TelemetryItem(
+                            label: 'VELOCIDAD',
+                            value: '${_selectedBus?.currentSpeedKmH ?? 38} km/h',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ],
+        ),
+      ],
+    ),
       ),
     );
   }
@@ -426,12 +448,10 @@ class _OwnerMapScreenState extends State<OwnerMapScreen> {
 
 class _BusGpsMarker extends StatelessWidget {
   final String code;
-  final Color color;
   final bool isSelected;
 
   const _BusGpsMarker({
     required this.code,
-    required this.color,
     required this.isSelected,
   });
 
@@ -440,48 +460,28 @@ class _BusGpsMarker extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: isSelected ? SmartColors.smartText : color,
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+        NeumorphicBox(
+          isPill: true,
+          isDark: true,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           child: Text(
             code,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+            style: GoogleFonts.jetBrainsMono(
+              color: isSelected ? SmartColors.electricCyan : Colors.white,
+              fontWeight: FontWeight.w800,
               fontSize: 10,
             ),
           ),
         ),
-        const SizedBox(height: 2),
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? SmartColors.smartBlue : color,
-              width: isSelected ? 3 : 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: (isSelected ? SmartColors.smartBlue : Colors.black).withValues(alpha: 0.3),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        const SizedBox(height: 3),
+        NeumorphicBox(
+          isPill: true,
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            Icons.directions_bus_rounded,
+            color: isSelected ? SmartColors.electricCyan : SmartColors.deepPetrol,
+            size: 20,
           ),
-          child: Icon(Icons.directions_bus, color: color, size: 22),
         ),
       ],
     );
@@ -489,12 +489,10 @@ class _BusGpsMarker extends StatelessWidget {
 }
 
 class _TelemetryItem extends StatelessWidget {
-  final IconData icon;
   final String label;
   final String value;
 
   const _TelemetryItem({
-    required this.icon,
     required this.label,
     required this.value,
   });
@@ -502,18 +500,25 @@ class _TelemetryItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: SmartColors.smartGray),
-            const SizedBox(width: 4),
-            Text(label, style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-          ],
+        Text(
+          label,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: SmartColors.deepPetrol.withValues(alpha: 0.6),
+          ),
         ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: SmartColors.smartText),
+          style: GoogleFonts.jetBrainsMono(
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+            color: SmartColors.deepBlack,
+          ),
         ),
       ],
     );

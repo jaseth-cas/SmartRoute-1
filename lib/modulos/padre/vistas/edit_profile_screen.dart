@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../nucleo/datos/mock_data.dart';
@@ -11,6 +12,8 @@ import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/utilidades/validators.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/primary_button.dart';
+import '../../../nucleo/widgets/neumorphic_box.dart';
+import '../../../nucleo/widgets/responsive_layout.dart';
 import '../../autenticacion/datos/session_manager.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -23,9 +26,9 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController _nameCtrl;
-  late final TextEditingController _emailCtrl;
-  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
   late final TextEditingController _studentNameCtrl;
   late final TextEditingController _pickupAddressCtrl;
   late final TextEditingController _schoolCtrl;
@@ -38,9 +41,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final session = context.read<SessionManager>().currentSession;
     _student = MockData.getPrimaryStudent();
 
-    _nameCtrl = TextEditingController(text: session?.name ?? _student.parentName);
-    _emailCtrl = TextEditingController(text: session?.email ?? 'padre@smartroute.com');
-    _phoneCtrl = TextEditingController(text: _student.parentPhone);
+    _nameController = TextEditingController(text: session?.name ?? _student.parentName);
+    _emailController = TextEditingController(text: session?.email ?? 'carlos.gomez@smartroute.com');
+    _phoneController = TextEditingController(text: _student.parentPhone);
     _studentNameCtrl = TextEditingController(text: _student.name);
     _pickupAddressCtrl = TextEditingController(text: _student.pickupAddress);
     _schoolCtrl = TextEditingController(text: _student.schoolName);
@@ -48,9 +51,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
-    _emailCtrl.dispose();
-    _phoneCtrl.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
     _studentNameCtrl.dispose();
     _pickupAddressCtrl.dispose();
     _schoolCtrl.dispose();
@@ -67,8 +70,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // 1. Actualizar sesión activa en memoria
       sessionManager.updateUserInfo(
-        name: _nameCtrl.text,
-        email: _emailCtrl.text,
+        name: _nameController.text,
+        email: _emailController.text,
       );
 
       // 2. Actualizar perfil del padre en Supabase si hay sesión activa
@@ -76,9 +79,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (currentUserId != null) {
         await authService.updateUserProfile(
           userId: currentUserId,
-          nombre: _nameCtrl.text,
-          email: _emailCtrl.text,
-          telefono: _phoneCtrl.text,
+          nombre: _nameController.text,
+          email: _emailController.text,
+          telefono: _phoneController.text,
         );
       }
 
@@ -87,15 +90,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         studentId: _student.id,
         name: _studentNameCtrl.text,
         pickupAddress: _pickupAddressCtrl.text,
-        parentPhone: _phoneCtrl.text,
+        parentPhone: _phoneController.text,
         schoolName: _schoolCtrl.text,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Perfil del tutor y estudiante actualizado exitosamente'),
-            backgroundColor: SmartColors.smartGreen,
+            content: Text('Perfil de tutor y estudiante actualizado con éxito.'),
+            backgroundColor: SmartColors.deepBlue,
           ),
         );
         if (context.canPop()) {
@@ -110,124 +113,136 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: SmartColors.smartBackground,
+      backgroundColor: SmartColors.neuBackground,
       appBar: AppBar(
-        title: const Text('Editar Perfil y Estudiante', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/student_profile');
-            }
-          },
+        title: Text(
+          'CONFIG // EDITAR PERFIL',
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+            color: SmartColors.deepBlack,
+          ),
+        ),
+        backgroundColor: SmartColors.neuBackground,
+        elevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: NeumorphicBox(
+            padding: EdgeInsets.zero,
+            isPill: true,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, size: 18, color: SmartColors.deepBlack),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/student_profile');
+                }
+              },
+            ),
+          ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: const BoxDecoration(
-                      color: SmartColors.smartLightBlue,
-                      shape: BoxShape.circle,
+      body: ResponsiveContent.narrow(
+        maxWidth: 560,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 10),
+                Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    NeumorphicBox(
+                      width: 100,
+                      height: 100,
+                      borderRadius: BorderRadius.circular(34),
+                      child: const Center(
+                        child: Icon(Icons.person_rounded, size: 50, color: SmartColors.deepBlue),
+                      ),
                     ),
-                    child: const Icon(Icons.person, size: 60, color: SmartColors.smartBlue),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: SmartColors.smartBlue,
-                      shape: BoxShape.circle,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: SmartColors.deepBlack,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                            offset: const Offset(0, 3),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.camera_alt_rounded, color: SmartColors.vibrantCyan, size: 16),
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Datos del Padre / Tutor Legal',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: SmartColors.smartBlue),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                label: 'Nombre completo',
-                hint: 'Ingresa tu nombre',
-                prefixIcon: Icons.badge,
-                controller: _nameCtrl,
-                validator: (val) => Validators.validateRequired(val, fieldName: 'El nombre'),
-              ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                label: 'Correo electrónico',
-                hint: 'padre.familia@smartroute.com',
-                prefixIcon: Icons.email,
-                keyboardType: TextInputType.emailAddress,
-                controller: _emailCtrl,
-                validator: Validators.validateEmail,
-              ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                label: 'Teléfono de emergencia',
-                hint: 'Tu número de teléfono',
-                prefixIcon: Icons.phone,
-                keyboardType: TextInputType.phone,
-                controller: _phoneCtrl,
-                validator: (val) => Validators.validatePhone(val, required: true),
-              ),
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Datos del Estudiante Asociado (RF-02)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: SmartColors.smartBlue),
+                const SizedBox(height: 28),
+
+                CustomTextField(
+                  label: 'Nombre de Tutor',
+                  hint: 'Ingresa tu nombre',
+                  prefixIcon: Icons.badge_outlined,
+                  controller: _nameController,
+                  validator: (val) => Validators.validateRequired(val, fieldName: 'El nombre'),
                 ),
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                label: 'Nombre del Estudiante',
-                hint: 'Nombre de tu hijo(a)',
-                prefixIcon: Icons.child_care,
-                controller: _studentNameCtrl,
-                validator: (val) => Validators.validateRequired(val, fieldName: 'El nombre del estudiante'),
-              ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                label: 'Dirección exacta de recogida / retorno',
-                hint: 'Calle y número de residencia',
-                prefixIcon: Icons.home_outlined,
-                controller: _pickupAddressCtrl,
-                validator: (val) => Validators.validateRequired(val, fieldName: 'La dirección de recogida'),
-              ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                label: 'Colegio de destino',
-                hint: 'Colegio San José',
-                prefixIcon: Icons.school_outlined,
-                controller: _schoolCtrl,
-                validator: (val) => Validators.validateRequired(val, fieldName: 'El colegio'),
-              ),
-              const SizedBox(height: 32),
-              PrimaryButton(
-                text: 'Guardar cambios',
-                icon: Icons.save,
-                onPressed: _saveProfile,
-              ),
-            ],
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Correo de Notificaciones',
+                  hint: 'correo@ejemplo.com',
+                  prefixIcon: Icons.alternate_email_rounded,
+                  keyboardType: TextInputType.emailAddress,
+                  controller: _emailController,
+                  validator: Validators.validateEmail,
+                ),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Teléfono Móvil (SMS Alertas)',
+                  hint: 'Ingresa tu teléfono',
+                  prefixIcon: Icons.phone_android_rounded,
+                  keyboardType: TextInputType.phone,
+                  controller: _phoneController,
+                  validator: (val) => Validators.validatePhone(val, required: true),
+                ),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Nombre del Estudiante',
+                  hint: 'Nombre de tu hijo(a)',
+                  prefixIcon: Icons.child_care_rounded,
+                  controller: _studentNameCtrl,
+                  validator: (val) => Validators.validateRequired(val, fieldName: 'El nombre del estudiante'),
+                ),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Dirección exacta de recogida / retorno',
+                  hint: 'Calle y número de residencia',
+                  prefixIcon: Icons.home_outlined,
+                  controller: _pickupAddressCtrl,
+                  validator: (val) => Validators.validateRequired(val, fieldName: 'La dirección de recogida'),
+                ),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  label: 'Colegio de destino',
+                  hint: 'Colegio San José',
+                  prefixIcon: Icons.school_outlined,
+                  controller: _schoolCtrl,
+                  validator: (val) => Validators.validateRequired(val, fieldName: 'El colegio'),
+                ),
+                const SizedBox(height: 32),
+
+                PrimaryButton(
+                  text: 'GUARDAR CAMBIOS',
+                  icon: Icons.check_circle_outline_rounded,
+                  onPressed: _saveProfile,
+                ),
+                const SizedBox(height: 28),
+              ],
+            ),
           ),
         ),
       ),

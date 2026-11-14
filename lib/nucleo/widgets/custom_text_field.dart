@@ -1,26 +1,31 @@
-﻿import 'package:flutter/material.dart';
-import '../tema/colors.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class CustomTextField extends StatelessWidget {
   final String label;
   final String? hint;
   final IconData? prefixIcon;
+  final Widget? suffixIcon;
   final bool isPassword;
   final TextInputType keyboardType;
   final String? Function(String?)? validator;
   final void Function(String)? onChanged;
   final TextEditingController? controller;
+  final int maxLines;
 
   const CustomTextField({
     super.key,
     required this.label,
     this.hint,
     this.prefixIcon,
+    this.suffixIcon,
     this.isPassword = false,
     this.keyboardType = TextInputType.text,
     this.validator,
     this.onChanged,
     this.controller,
+    this.maxLines = 1,
   });
 
   @override
@@ -28,50 +33,77 @@ class CustomTextField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: SmartColors.smartText,
-          ),
+        // Etiqueta técnica minimalista (tipo "FIELD 3" de Quivox)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: SmartColors.deepBlue.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          obscureText: isPassword,
-          keyboardType: keyboardType,
-          validator: validator,
-          onChanged: onChanged,
-          style: const TextStyle(fontSize: 16, color: SmartColors.smartText),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: SmartColors.smartGray),
-            prefixIcon: prefixIcon != null
-                ? Icon(prefixIcon, color: SmartColors.smartGray, size: 20)
-                : null,
-            filled: true,
-            fillColor: SmartColors.smartSurface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: SmartColors.smartBorder),
+        Container(
+          decoration: BoxDecoration(
+            color: SmartColors.neuInset,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlue.withValues(alpha: 0.05),
+                offset: const Offset(1.5, 2),
+                blurRadius: 4,
+              ),
+              const BoxShadow(
+                color: Colors.white,
+                offset: Offset(-1.5, -2),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: controller,
+            obscureText: isPassword,
+            keyboardType: keyboardType,
+            validator: validator,
+            onChanged: onChanged,
+            maxLines: maxLines,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w600,
+              color: SmartColors.deepBlack,
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: SmartColors.smartBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: SmartColors.smartBlue, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: SmartColors.smartRed),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: SmartColors.smartRed, width: 2),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: GoogleFonts.plusJakartaSans(
+                color: SmartColors.smartGray.withValues(alpha: 0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+              prefixIcon: prefixIcon != null
+                  ? Icon(prefixIcon, color: SmartColors.deepBlue, size: 20)
+                  : null,
+              suffixIcon: suffixIcon,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: SmartColors.vibrantCyan, width: 1.5),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: SmartColors.primaryCrimson, width: 1.5),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: SmartColors.primaryCrimson, width: 1.5),
+              ),
             ),
           ),
         ),

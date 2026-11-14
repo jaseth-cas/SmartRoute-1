@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
-import 'smart_route_card.dart';
+import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
 class StopCard extends StatelessWidget {
   final StopMock stop;
@@ -17,30 +18,40 @@ class StopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SmartRouteCard(
+    return NeumorphicBox(
+      padding: const EdgeInsets.all(18),
+      borderRadius: BorderRadius.circular(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              // Badge numérico estilo Quivox (como "10" o "30")
               Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: SmartColors.smartLightBlue,
-                  shape: BoxShape.circle,
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: SmartColors.deepBlack,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SmartColors.deepBlack.withValues(alpha: 0.2),
+                      offset: const Offset(0, 3),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  stop.order.toString(),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: SmartColors.smartBlue,
-                    fontSize: 12,
+                  stop.order.toString().padLeft(2, '0'),
+                  style: GoogleFonts.jetBrainsMono(
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.vibrantCyan,
+                    fontSize: 13,
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,54 +61,88 @@ class StopCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             stop.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w800,
                               fontSize: 15,
-                              color: SmartColors.smartText,
+                              color: SmartColors.deepBlack,
+                              letterSpacing: -0.2,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (stop.isFavorite) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.favorite, color: Colors.red, size: 14),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.favorite_rounded, color: SmartColors.primaryCrimson, size: 16),
                         ],
                       ],
                     ),
+                    const SizedBox(height: 3),
                     Text(
-                      'Código: ${stop.stopCode} | ${stop.distanceFromStartKm} km',
-                      style: const TextStyle(fontSize: 11, color: SmartColors.smartGray),
+                      'STOP // ${stop.stopCode} • ${stop.distanceFromStartKm} km',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 11,
+                        color: SmartColors.smartGray,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                flex: 15,
-                child: ElevatedButton(
-                  onPressed: onSelect,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: SmartColors.smartBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: GestureDetector(
+                  onTap: onSelect,
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: SmartColors.deepBlack,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SmartColors.deepBlack.withValues(alpha: 0.2),
+                          offset: const Offset(0, 3),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'SELECCIONAR',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: SmartColors.ghostWhite,
+                      ),
+                    ),
                   ),
-                  child: const Text('Seleccionar', style: TextStyle(fontSize: 11)),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 10,
-                child: OutlinedButton(
-                  onPressed: onDetail,
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    side: const BorderSide(color: SmartColors.smartBorder),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: onDetail,
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: SmartColors.neuInset,
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  child: const Text('Detalle', style: TextStyle(fontSize: 11, color: SmartColors.smartBlue)),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'DETALLE',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: SmartColors.deepBlue,
+                    ),
+                  ),
                 ),
               ),
             ],
