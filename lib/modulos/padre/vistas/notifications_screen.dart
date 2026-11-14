@@ -107,6 +107,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'Marcar todas como leídas',
+              icon: const Icon(Icons.done_all, color: SmartColors.smartBlue),
+              onPressed: () async {
+                final incidentService = context.read<IncidentService>();
+                await incidentService.markAllAsRead(busCode: 'BUS-01');
+                await _loadNotifications(silent: true);
+                if (!mounted) return;
+                setState(() {
+                  _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
+                });
+              },
+            ),
+            IconButton(
               tooltip: 'Actualizar',
               icon: const Icon(Icons.refresh, color: SmartColors.smartBlue),
               onPressed: () => _loadNotifications(),
@@ -168,7 +181,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     ),
                                   );
                                 }
-                                return NotificationCard(notification: _notifications[index]);
+                                final notif = _notifications[index];
+                                return GestureDetector(
+                                  onTap: () async {
+                                    if (!notif.read) {
+                                      await context.read<IncidentService>().markAsRead(notif.id);
+                                      if (!mounted) return;
+                                      setState(() {
+                                        _notifications[index] = notif.copyWith(read: true);
+                                      });
+                                    }
+                                  },
+                                  child: NotificationCard(notification: notif),
+                                );
                               },
                             ),
                     ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../nucleo/tema/colors.dart';
+import '../../../nucleo/utilidades/validators.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/servicios/bus_service.dart';
@@ -101,10 +102,7 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                 hint: 'Ej. BUS-03',
                 prefixIcon: Icons.directions_bus,
                 onChanged: (value) => code = value,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'El código es obligatorio';
-                  return null;
-                },
+                validator: Validators.validateBusCode,
               ),
               const SizedBox(height: 16),
               CustomTextField(
@@ -112,11 +110,7 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                 hint: 'Ej. 123456',
                 prefixIcon: Icons.pin,
                 onChanged: (value) => plate = value,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'La placa es obligatoria';
-                  if (val.length < 5) return 'Placa inválida';
-                  return null;
-                },
+                validator: Validators.validatePlate,
               ),
               const SizedBox(height: 16),
               CustomTextField(
@@ -124,10 +118,7 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                 hint: 'Ej. Toyota Coaster',
                 prefixIcon: Icons.car_repair,
                 onChanged: (value) => model = value,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'El modelo es obligatorio';
-                  return null;
-                },
+                validator: (val) => Validators.validateRequired(val, fieldName: 'El modelo'),
               ),
               const SizedBox(height: 16),
               CustomTextField(
@@ -136,12 +127,14 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                 prefixIcon: Icons.people,
                 keyboardType: TextInputType.number,
                 onChanged: (value) => capacity = value,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'La capacidad es obligatoria';
-                  final numVal = int.tryParse(val);
-                  if (numVal == null || numVal <= 0) return 'Ingresa un número válido mayor a 0';
-                  return null;
-                },
+                validator: Validators.validateCapacity,
+              ),
+              const SizedBox(height: 16),
+              CustomTextField(
+                label: 'Colegio Asignado',
+                hint: 'Ej. Colegio San José',
+                prefixIcon: Icons.school,
+                onChanged: (value) => school = value,
               ),
               const SizedBox(height: 32),
               PrimaryButton(

@@ -108,6 +108,21 @@ class SessionManager extends ChangeNotifier {
     notifyListeners(); // Notifica a la app (útil para que GoRouter redirija al Login)
   }
 
+  /// Actualiza los datos básicos del usuario en la sesión activa sin perder el token ni el rol.
+  void updateUserInfo({String? name, String? email}) {
+    if (_currentSession == null) return;
+    _currentSession = JwtSession(
+      token: _currentSession!.token,
+      userId: _currentSession!.userId,
+      name: (name != null && name.trim().isNotEmpty) ? name.trim() : _currentSession!.name,
+      email: (email != null && email.trim().isNotEmpty) ? email.trim() : _currentSession!.email,
+      role: _currentSession!.role,
+      issuedAt: _currentSession!.issuedAt,
+      expiresAt: _currentSession!.expiresAt,
+    );
+    notifyListeners();
+  }
+
   /// Retorna `true` si hay un usuario logueado actualmente.
   bool get isLoggedIn => _currentSession != null;
 

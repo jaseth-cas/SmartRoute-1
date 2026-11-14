@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
@@ -20,6 +21,46 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   bool notifyStart = true;
   bool notifyEnd = false;
   bool notifyGps = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedPreferences();
+  }
+
+  Future<void> _loadSavedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      notificationsEnabled = prefs.getBool('notif_enabled') ?? true;
+      proximityMinutes = prefs.getString('notif_proximity_min') ?? "5";
+      notifyStart = prefs.getBool('notif_start') ?? true;
+      notifyEnd = prefs.getBool('notif_end') ?? false;
+      notifyGps = prefs.getBool('notif_gps') ?? true;
+    });
+  }
+
+  Future<void> _savePreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notif_enabled', notificationsEnabled);
+    await prefs.setString('notif_proximity_min', proximityMinutes);
+    await prefs.setBool('notif_start', notifyStart);
+    await prefs.setBool('notif_end', notifyEnd);
+    await prefs.setBool('notif_gps', notifyGps);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Preferencias guardadas (Alerta de proximidad: $proximityMinutes min)'),
+        backgroundColor: SmartColors.smartGreen,
+      ),
+    );
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/notifications');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +128,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               ),
             ),
             const SizedBox(height: 24),
-            PrimaryButton(text: 'Guardar configuración', onPressed: () { /* Visual save */ }),
+            PrimaryButton(
+              text: 'Guardar configuración',
+              icon: Icons.save,
+              onPressed: _savePreferences,
+            ),
             const SizedBox(height: 24),
             const InfoBanner(
               text: 'Configuración simulada. No se enviarán notificaciones reales a este dispositivo.',

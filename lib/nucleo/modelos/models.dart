@@ -49,6 +49,52 @@ class BusMock {
     this.longitude,
   });
 
+  /// Indica si la unidad escolar aún cuenta con cupos disponibles (RF-05).
+  bool get hasAvailableSeats => seatsOccupied < capacity;
+
+  /// Número de asientos libres disponibles en la unidad.
+  int get availableSeats => (capacity - seatsOccupied).clamp(0, capacity);
+
+  BusMock copyWith({
+    int? id,
+    String? code,
+    String? plate,
+    String? model,
+    int? capacity,
+    int? seatsOccupied,
+    String? status,
+    String? driverName,
+    String? ownerName,
+    String? routeName,
+    bool? simulatedGpsActive,
+    int? currentSpeedKmH,
+    String? lastUpdate,
+    bool? isVerified,
+    String? schoolName,
+    double? latitude,
+    double? longitude,
+  }) {
+    return BusMock(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      plate: plate ?? this.plate,
+      model: model ?? this.model,
+      capacity: capacity ?? this.capacity,
+      seatsOccupied: seatsOccupied ?? this.seatsOccupied,
+      status: status ?? this.status,
+      driverName: driverName ?? this.driverName,
+      ownerName: ownerName ?? this.ownerName,
+      routeName: routeName ?? this.routeName,
+      simulatedGpsActive: simulatedGpsActive ?? this.simulatedGpsActive,
+      currentSpeedKmH: currentSpeedKmH ?? this.currentSpeedKmH,
+      lastUpdate: lastUpdate ?? this.lastUpdate,
+      isVerified: isVerified ?? this.isVerified,
+      schoolName: schoolName ?? this.schoolName,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+    );
+  }
+
   factory BusMock.fromMap(Map<String, dynamic> map) {
     return BusMock(
       id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
@@ -282,6 +328,24 @@ class NotificationMock {
     required this.read,
     required this.type,
   });
+
+  NotificationMock copyWith({
+    int? id,
+    String? title,
+    String? message,
+    String? time,
+    bool? read,
+    String? type,
+  }) {
+    return NotificationMock(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      message: message ?? this.message,
+      time: time ?? this.time,
+      read: read ?? this.read,
+      type: type ?? this.type,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {

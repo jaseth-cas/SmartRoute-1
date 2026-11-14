@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
@@ -63,8 +64,16 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
     try {
       final busService = context.read<BusService>();
       final studentService = context.read<StudentService>();
+      final session = context.read<SessionManager>().currentSession;
 
-      final bus = await busService.getBusByCode('BUS-01') ?? (await busService.getAllBuses()).first;
+      BusMock? assignedBus;
+      if (session != null && session.userId.isNotEmpty) {
+        assignedBus = await busService.getBusByDriver(session.userId);
+      }
+
+      final bus = assignedBus ??
+          await busService.getBusByCode('BUS-01') ??
+          (await busService.getAllBuses()).first;
       final passengers = await studentService.getStudentsByBus(bus.code);
 
       if (mounted) {
@@ -135,6 +144,7 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
     final onboardCount = _allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
     final absentCount = _allPassengers.where((p) => p.status == PassengerStatus.absent).length;
     final absentStudents = _allPassengers.where((p) => p.status == PassengerStatus.absent).toList();
+    final routeSavings = context.read<AttendanceService>().calculateRouteSavings(_allPassengers);
 
     final filteredPassengers = _allPassengers.where((p) {
       if (_selectedFilter == 'A bordo') return p.status == PassengerStatus.onboard;
@@ -254,7 +264,7 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              '${absentStudents.map((s) => '${s.name} (Parada #${s.order})').join(', ')} reportó inasistencia. La parada ha sido omitida para ahorrar combustible.',
+                              '${absentStudents.map((s) => '${s.name} (Parada #${s.order})').join(', ')} reportó inasistencia. Parada omitida (Ahorro: ${routeSavings['savedMinutes']} min / ${routeSavings['savedKilometers']} km).',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
                             ),
                           ),

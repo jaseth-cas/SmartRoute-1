@@ -9,7 +9,7 @@ import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 
-class EtaScreen extends StatelessWidget {
+class EtaScreen extends StatefulWidget {
   final String routeCode;
   final String stopCode;
 
@@ -20,10 +20,47 @@ class EtaScreen extends StatelessWidget {
   });
 
   @override
+  State<EtaScreen> createState() => _EtaScreenState();
+}
+
+class _EtaScreenState extends State<EtaScreen> {
+  int? _calculatedEta;
+
+  void _recalculateEta() {
+    final route = MockData.getRouteByCode(widget.routeCode);
+    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
+    final bus = MockData.getBusByCode(route?.busCode ?? 'BUS-01');
+
+    final distanceKm = (stop != null && stop.distanceFromStartKm > 0)
+        ? stop.distanceFromStartKm
+        : (widget.routeCode == 'R-BU' ? 1.2 : 2.5);
+    final speedKmH = (bus != null && bus.currentSpeedKmH > 0) ? bus.currentSpeedKmH : 32;
+
+    setState(() {
+      _calculatedEta = MockData.calculateEtaMinutes(
+        distanceKm: distanceKm,
+        speedKmH: speedKmH,
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('ETA actualizado en vivo: $_calculatedEta minutos ($distanceKm km a $speedKmH km/h)'),
+        backgroundColor: SmartColors.smartBlue,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final route = MockData.getRouteByCode(routeCode);
-    final stop = MockData.stops.where((s) => s.stopCode == stopCode).firstOrNull;
+    final route = MockData.getRouteByCode(widget.routeCode);
+    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
     final bus = MockData.getBusByCode(route?.busCode ?? "");
+    final distanceKm = (stop != null && stop.distanceFromStartKm > 0)
+        ? stop.distanceFromStartKm
+        : (widget.routeCode == "R-BU" ? 1.2 : 2.5);
+    final etaValue = _calculatedEta ?? route?.etaMinutes;
 
     return PopScope(
       canPop: context.canPop(),
@@ -78,7 +115,7 @@ class EtaScreen extends StatelessWidget {
                 children: [
                   const Text('ETA estimado', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
                   Text(
-                    '${route?.etaMinutes ?? "--"} minutos',
+                    '${etaValue ?? "--"} minutos',
                     style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: SmartColors.smartBlue),
                   ),
                   const SizedBox(height: 8),
@@ -88,28 +125,26 @@ class EtaScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   _DetailInfoRow(icon: Icons.map, label: 'Ruta', value: route?.name ?? 'N/A'),
                   _DetailInfoRow(icon: Icons.place, label: 'Parada', value: stop?.name ?? 'N/A'),
-                  _DetailInfoRow(icon: Icons.straighten, label: 'Distancia simulada', value: routeCode == "R-BU" ? "1.2 km" : "2.5 km"),
+                  _DetailInfoRow(icon: Icons.straighten, label: 'Distancia simulada', value: '$distanceKm km'),
                   _DetailInfoRow(icon: Icons.directions_bus, label: 'Bus asignado', value: bus?.code ?? 'N/A'),
-                  _DetailInfoRow(icon: Icons.stacked_line_chart, label: 'Estado del bus', value: 'En camino'),
+                  _DetailInfoRow(icon: Icons.stacked_line_chart, label: 'Estado del bus', value: bus?.status ?? 'En camino'),
                 ],
               ),
             ),
             const SizedBox(height: 24),
             InfoBanner(
-              text: 'El bus llegará aproximadamente en ${route?.etaMinutes ?? "--"} minutos.',
+              text: 'El bus llegará aproximadamente en ${etaValue ?? "--"} minutos.',
               icon: Icons.info,
             ),
             const SizedBox(height: 24),
             PrimaryButton(
               text: 'Ver bus en mapa',
               icon: Icons.explore,
-              onPressed: () => context.push('/map/$routeCode/$stopCode'),
+              onPressed: () => context.push('/map/${widget.routeCode}/${widget.stopCode}'),
             ),
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: () {
-                // Visual alert
-              },
+              onPressed: _recalculateEta,
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
                 side: const BorderSide(color: SmartColors.smartBlue),

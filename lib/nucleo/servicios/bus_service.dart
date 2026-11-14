@@ -7,7 +7,19 @@ import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
 /// Servicio para la gestión de unidades escolares, cupos y telemetría GPS.
 class BusService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
+  final SupabaseClient? _injectedClient;
+
+  BusService({SupabaseClient? supabaseClient}) : _injectedClient = supabaseClient;
+
+  SupabaseClient get _supabase => _injectedClient ?? SupabaseConfig.client;
+
+  /// Calcula el tiempo estimado de llegada (ETA en minutos) según distancia y velocidad (RF-17)
+  int calculateEtaMinutes({
+    required double distanceKm,
+    required int speedKmH,
+  }) {
+    return MockData.calculateEtaMinutes(distanceKm: distanceKm, speedKmH: speedKmH);
+  }
 
   /// Obtiene todos los autobuses registrados en la base de datos
   Future<List<BusMock>> getAllBuses() async {
@@ -115,6 +127,81 @@ class BusService {
         .single();
 
     return BusMock.fromMap(response);
+  }
+
+  /// Actualiza los datos técnicos y capacidad de un autobús existente (RF-04)
+  Future<BusMock?> updateBus({
+    required String code,
+    required String plate,
+    required String model,
+    required int capacity,
+    String? schoolName,
+    String? routeName,
+  }) async {
+    final cleanedCode = code.trim().toUpperCase();
+    final cleanedPlate = plate.trim().toUpperCase();
+    final cleanedModel = model.trim();
+
+    MockData.updateBus(
+      code: cleanedCode,
+      plate: cleanedPlate,
+      model: cleanedModel,
+      capacity: capacity,
+      schoolName: schoolName,
+      routeName: routeName,
+    );
+
+    try {
+      final updates = <String, dynamic>{
+        'placa': cleanedPlate,
+        'modelo': cleanedModel,
+        'capacidad': capacity,
+        if (schoolName != null && schoolName.trim().isNotEmpty)
+          'colegio_asignado': schoolName.trim(),
+        if (routeName != null && routeName.trim().isNotEmpty)
+          'nombre_ruta': routeName.trim(),
+      };
+
+      final response = await _supabase
+          .from('autobuses')
+          .update(updates)
+          .eq('codigo', cleanedCode)
+          .select()
+          .maybeSingle();
+
+      if (response != null) {
+        return BusMock.fromMap(response);
+      }
+    } catch (e) {
+      debugPrint('Error actualizando autobús en Supabase: $e');
+    }
+
+    return MockData.getBusByCode(cleanedCode);
+  }
+
+  /// Asigna un conductor verificado a una unidad escolar (RF-03)
+  Future<BusMock?> assignDriverToBus({
+    required String busCode,
+    required String driverName,
+    String? driverId,
+  }) async {
+    MockData.assignDriverToBus(busCode: busCode, driverName: driverName);
+
+    try {
+      final updates = <String, dynamic>{
+        if (driverId != null && driverId.isNotEmpty) 'conductor_id': driverId,
+      };
+      if (updates.isNotEmpty) {
+        await _supabase
+            .from('autobuses')
+            .update(updates)
+            .eq('codigo', busCode);
+      }
+    } catch (e) {
+      debugPrint('Aviso asignando conductor en Supabase: $e');
+    }
+
+    return MockData.getBusByCode(busCode);
   }
 
   /// Actualiza la telemetría GPS del vehículo en vivo (Emitido por el conductor)

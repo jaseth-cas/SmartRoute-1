@@ -1,11 +1,21 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
 /// Servicio para el reporte de incidentes en ruta y gestión de notificaciones escolares en vivo.
 class IncidentService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
+  final SupabaseClient? _injectedClient;
+
+  IncidentService({SupabaseClient? supabaseClient}) : _injectedClient = supabaseClient;
+
+  SupabaseClient get _supabase => _injectedClient ?? SupabaseConfig.client;
+
+  /// Determina la severidad/tipo de notificación según la categoría del incidente (RF-13)
+  String resolveNotificationType(String incidentType) {
+    return (incidentType == 'Mecánico' || incidentType == 'Accidente') ? 'alert' : 'info';
+  }
 
   /// Registra un incidente vial o mecánico reportado por el conductor y difunde la alerta
   Future<void> reportIncident({
@@ -87,6 +97,11 @@ class IncidentService {
 
   /// Marca una notificación como leída
   Future<void> markAsRead(int notificationId) async {
+    final index = MockData.notifications.indexWhere((n) => n.id == notificationId);
+    if (index != -1) {
+      MockData.notifications[index] = MockData.notifications[index].copyWith(read: true);
+    }
+
     try {
       await _supabase
           .from('notificaciones')
@@ -94,6 +109,24 @@ class IncidentService {
           .eq('id', notificationId);
     } catch (e) {
       debugPrint('Error en markAsRead: $e');
+    }
+  }
+
+  /// Marca todas las notificaciones como leídas
+  Future<void> markAllAsRead({String? busCode}) async {
+    for (int i = 0; i < MockData.notifications.length; i++) {
+      MockData.notifications[i] = MockData.notifications[i].copyWith(read: true);
+    }
+
+    try {
+      var query = _supabase.from('notificaciones').update({'leida': true});
+      if (busCode != null && busCode.isNotEmpty) {
+        await query.eq('autobus_codigo', busCode);
+      } else {
+        await query.eq('leida', false);
+      }
+    } catch (e) {
+      debugPrint('Error en markAllAsRead: $e');
     }
   }
 

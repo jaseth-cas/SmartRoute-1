@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
@@ -22,6 +22,7 @@ class StopDetailScreen extends StatefulWidget {
 
 class _StopDetailScreenState extends State<StopDetailScreen> {
   late bool isFavorite;
+  bool _proximityAlertActive = false;
 
   @override
   void initState() {
@@ -58,10 +59,20 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                 isFavorite ? Icons.favorite : Icons.favorite_border,
                 color: isFavorite ? Colors.red : SmartColors.smartGray,
               ),
-              onPressed: () {
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final newFav = await MockData.toggleStopFavorite(widget.stopCode);
+                if (!mounted) return;
                 setState(() {
-                  isFavorite = !isFavorite;
+                  isFavorite = newFav;
                 });
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(newFav ? 'Parada marcada como favorita' : 'Parada quitada de favoritas'),
+                    duration: const Duration(seconds: 1),
+                    backgroundColor: SmartColors.smartBlue,
+                  ),
+                );
               },
             ),
         ],
@@ -120,19 +131,40 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                   const SizedBox(height: 12),
                   OutlinedButton(
                     onPressed: () {
-                      // Toggle visual alert
+                      setState(() {
+                        _proximityAlertActive = !_proximityAlertActive;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _proximityAlertActive
+                                ? 'Alerta de proximidad activada para ${stop.name} (aviso a 5 min)'
+                                : 'Alerta de proximidad desactivada para ${stop.name}',
+                          ),
+                          backgroundColor: _proximityAlertActive ? SmartColors.smartGreen : SmartColors.smartGray,
+                        ),
+                      );
                     },
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 48),
-                      side: const BorderSide(color: SmartColors.smartBlue),
+                      side: BorderSide(color: _proximityAlertActive ? SmartColors.smartGreen : SmartColors.smartBlue),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.notifications_active, color: SmartColors.smartBlue),
-                        SizedBox(width: 8),
-                        Text('Activar alerta de proximidad', style: TextStyle(color: SmartColors.smartBlue, fontWeight: FontWeight.bold)),
+                      children: [
+                        Icon(
+                          _proximityAlertActive ? Icons.notifications_active : Icons.notifications_none,
+                          color: _proximityAlertActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _proximityAlertActive ? 'Alerta de proximidad activa' : 'Activar alerta de proximidad',
+                          style: TextStyle(
+                            color: _proximityAlertActive ? SmartColors.smartGreen : SmartColors.smartBlue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),

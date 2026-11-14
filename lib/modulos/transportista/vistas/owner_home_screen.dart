@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
+import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 import 'package:smartroute_flutter/nucleo/widgets/smart_route_card.dart';
 import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 
@@ -71,6 +73,173 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     }
   }
 
+  Future<void> _cyclePaymentStatus(StudentPassengerMock student) async {
+    final nextStatus = switch (student.paymentStatus) {
+      'Al día' => 'Pendiente',
+      'Pendiente' => 'En mora',
+      _ => 'Al día',
+    };
+
+    final studentService = context.read<StudentService>();
+    await studentService.updatePaymentStatus(
+      studentId: student.id,
+      status: nextStatus,
+    );
+    await _loadFleetData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Estado de pago de ${student.name}: $nextStatus'),
+        backgroundColor: nextStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showEnrollStudentDialog() {
+    if (_buses.isEmpty) return;
+    final formKey = GlobalKey<FormState>();
+    String studentName = '';
+    String parentName = '';
+    String parentPhone = '';
+    String pickupAddress = '';
+    BusMock selectedBus = _buses.first;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final hasSeats = selectedBus.hasAvailableSeats;
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Asignar Cupo Escolar (RF-05)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            content: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedBus.code,
+                      decoration: InputDecoration(
+                        labelText: 'Autobús Escolar',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      items: _buses.map((b) {
+                        return DropdownMenuItem(
+                          value: b.code,
+                          child: Text('${b.code} (${b.seatsOccupied}/${b.capacity} cupos)'),
+                        );
+                      }).toList(),
+                      onChanged: (code) {
+                        if (code != null) {
+                          setDialogState(() {
+                            selectedBus = _buses.firstWhere((b) => b.code == code);
+                          });
+                        }
+                      },
+                    ),
+                    if (!hasSeats) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Esta unidad no tiene asientos libres disponibles (Sobrecupo bloqueado).',
+                        style: TextStyle(color: SmartColors.smartRed, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        labelText: 'Nombre del Estudiante',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      validator: (v) => Validators.validateRequired(v, fieldName: 'El nombre'),
+                      onChanged: (v) => studentName = v,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        labelText: 'Nombre del Padre / Tutor',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      validator: (v) => Validators.validateRequired(v, fieldName: 'El tutor'),
+                      onChanged: (v) => parentName = v,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        labelText: 'Teléfono de Emergencia',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      validator: (v) => Validators.validatePhone(v, required: true),
+                      onChanged: (v) => parentPhone = v,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        labelText: 'Dirección de Recogida',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      validator: (v) => Validators.validateRequired(v, fieldName: 'La dirección'),
+                      onChanged: (v) => pickupAddress = v,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SmartColors.smartBlue,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: !hasSeats
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+                        Navigator.pop(ctx);
+                        try {
+                          final studentService = context.read<StudentService>();
+                          await studentService.enrollStudent(
+                            name: studentName,
+                            parentName: parentName,
+                            parentPhone: parentPhone,
+                            pickupAddress: pickupAddress,
+                            bus: selectedBus,
+                            schoolName: selectedBus.schoolName ?? 'Colegio San José',
+                          );
+                          await _loadFleetData();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Estudiante $studentName inscrito en ${selectedBus.code}'),
+                              backgroundColor: SmartColors.smartGreen,
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$e'),
+                              backgroundColor: SmartColors.smartRed,
+                            ),
+                          );
+                        }
+                      },
+                child: const Text('Asignar Asiento'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
@@ -103,9 +272,8 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: SmartColors.smartGray),
-            onPressed: () {
-              // Alerts
-            },
+            tooltip: 'Notificaciones de flota',
+            onPressed: () => context.push('/notifications'),
           ),
         ],
       ),
@@ -311,8 +479,18 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
               const SizedBox(height: 24),
 
               // Resumen de Cobro a Padres (Marketplace / SaaS)
-              const Text('Control de Cobros de Mensualidades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Control de Cobros de Mensualidades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  TextButton.icon(
+                    onPressed: _showEnrollStudentDialog,
+                    icon: const Icon(Icons.person_add_alt_1, size: 16, color: SmartColors.smartBlue),
+                    label: const Text('Asignar Cupo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartBlue)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               SmartRouteCard(
                 child: Column(
                   children: [
@@ -322,34 +500,40 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         child: Text('No hay pasajeros matriculados actualmente', style: TextStyle(fontSize: 12, color: SmartColors.smartGray)),
                       )
                     else
-                      ..._passengers.take(5).map((p) => Padding(
+                      ..._passengers.take(8).map((p) => Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('Tutor: ${p.parentName} (${p.busCode})', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  Text('Tutor: ${p.parentName} (${p.busCode})', style: const TextStyle(fontSize: 11, color: SmartColors.smartGray)),
+                                ],
+                              ),
                             ),
                             Row(
                               children: [
                                 Text('\$${p.monthlyFee.toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
                                 const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: p.paymentStatus == 'Al día' ? SmartColors.smartLightGreen : SmartColors.smartLightRed,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    p.paymentStatus,
-                                    style: TextStyle(
-                                      color: p.paymentStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
+                                InkWell(
+                                  onTap: () => _cyclePaymentStatus(p),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: p.paymentStatus == 'Al día' ? SmartColors.smartLightGreen : SmartColors.smartLightRed,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      p.paymentStatus,
+                                      style: TextStyle(
+                                        color: p.paymentStatus == 'Al día' ? SmartColors.smartGreen : SmartColors.smartRed,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -480,51 +664,182 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
     currentDriver = widget.bus.driverName;
   }
 
-  void _showAssignDialog() {
+  Future<void> _showAssignDialog() async {
+    final authService = context.read<AuthService>();
+    final busService = context.read<BusService>();
+    final drivers = await authService.getAvailableDrivers();
+    if (!mounted) return;
+
+    Map<String, dynamic> selectedDriver = drivers.first;
+
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          title: const Text('Asignar Conductor', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Text('Selecciona un conductor de tu nómina disponible para asignar a la unidad ${widget.bus.code}.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: SmartColors.smartBlue, foregroundColor: Colors.white),
-              onPressed: () {
-                setState(() {
-                  currentDriver = "Nuevo Conductor (Asignado)";
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Confirmar'),
-            ),
-          ],
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('Asignar Conductor Verificado', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Selecciona un conductor con Sello Trust & Safety para la unidad ${widget.bus.code}:', style: const TextStyle(fontSize: 13, color: SmartColors.smartGray)),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedDriver['id']?.toString(),
+                    decoration: InputDecoration(
+                      labelText: 'Conductor disponible',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    items: drivers.map((d) {
+                      return DropdownMenuItem<String>(
+                        value: d['id']?.toString(),
+                        child: Text(d['nombre']?.toString() ?? 'Conductor'),
+                      );
+                    }).toList(),
+                    onChanged: (id) {
+                      if (id != null) {
+                        setDialogState(() {
+                          selectedDriver = drivers.firstWhere((d) => d['id']?.toString() == id);
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: SmartColors.smartBlue, foregroundColor: Colors.white),
+                  onPressed: () async {
+                    final driverName = selectedDriver['nombre']?.toString() ?? 'Conductor Asignado';
+                    final driverId = selectedDriver['id']?.toString();
+                    Navigator.pop(ctx);
+                    await busService.assignDriverToBus(
+                      busCode: widget.bus.code,
+                      driverName: driverName,
+                      driverId: driverId,
+                    );
+                    if (mounted) {
+                      setState(() {
+                        currentDriver = driverName;
+                      });
+                      widget.onUpdated?.call();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Conductor $driverName asignado a ${widget.bus.code}'),
+                          backgroundColor: SmartColors.smartGreen,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Confirmar'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
   void _showEditDialog() {
+    final formKey = GlobalKey<FormState>();
+    String editedPlate = widget.bus.plate;
+    String editedModel = widget.bus.model;
+    String editedCapacity = widget.bus.capacity.toString();
+    String editedSchool = widget.bus.schoolName ?? 'Colegio San José';
+
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (ctx) {
         return AlertDialog(
           backgroundColor: Colors.white,
-          title: const Text('Editar Autobús', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Text('Modifica la placa, el modelo o la capacidad de asientos de la unidad ${widget.bus.code}.'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Editar Unidad ${widget.bus.code}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    initialValue: editedPlate,
+                    decoration: InputDecoration(
+                      labelText: 'Placa vehicular',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    validator: Validators.validatePlate,
+                    onChanged: (v) => editedPlate = v,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: editedModel,
+                    decoration: InputDecoration(
+                      labelText: 'Modelo',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    validator: (v) => Validators.validateRequired(v, fieldName: 'El modelo'),
+                    onChanged: (v) => editedModel = v,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: editedCapacity,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Capacidad de asientos',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    validator: Validators.validateCapacity,
+                    onChanged: (v) => editedCapacity = v,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: editedSchool,
+                    decoration: InputDecoration(
+                      labelText: 'Colegio Asignado',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    validator: (v) => Validators.validateRequired(v, fieldName: 'El colegio'),
+                    onChanged: (v) => editedSchool = v,
+                  ),
+                ],
+              ),
+            ),
+          ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: SmartColors.smartBlue, foregroundColor: Colors.white),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(ctx);
+                final busService = context.read<BusService>();
+                await busService.updateBus(
+                  code: widget.bus.code,
+                  plate: editedPlate,
+                  model: editedModel,
+                  capacity: int.parse(editedCapacity.trim()),
+                  schoolName: editedSchool,
+                );
+                if (mounted) {
+                  widget.onUpdated?.call();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Datos de la unidad ${widget.bus.code} actualizados'),
+                      backgroundColor: SmartColors.smartGreen,
+                    ),
+                  );
+                }
+              },
               child: const Text('Guardar'),
             ),
           ],

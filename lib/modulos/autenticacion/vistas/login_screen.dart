@@ -194,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               GestureDetector(
-                onTap: () {},
+                onTap: _showForgotPasswordDialog,
                 child: const Text(
                   'Olvidé mi contraseña',
                   style: TextStyle(
@@ -208,6 +208,73 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog() {
+    final resetFormKey = GlobalKey<FormState>();
+    String recoveryEmail = email;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Recuperar contraseña',
+          style: TextStyle(fontWeight: FontWeight.bold, color: SmartColors.smartText),
+        ),
+        content: Form(
+          key: resetFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ingresa tu correo electrónico registrado y te enviaremos un enlace seguro de restablecimiento.',
+                style: TextStyle(fontSize: 13, color: SmartColors.smartGray),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: recoveryEmail,
+                keyboardType: TextInputType.emailAddress,
+                validator: Validators.validateEmail,
+                onChanged: (val) => recoveryEmail = val,
+                decoration: InputDecoration(
+                  hintText: 'correo@smartroute.com',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: SmartColors.smartGray)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SmartColors.smartBlue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              if (!resetFormKey.currentState!.validate()) return;
+              Navigator.pop(ctx);
+              await _authService.resetPassword(recoveryEmail);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Instrucciones de recuperación enviadas a ${recoveryEmail.trim()}'),
+                  backgroundColor: SmartColors.smartGreen,
+                ),
+              );
+            },
+            child: const Text('Enviar enlace'),
+          ),
+        ],
       ),
     );
   }

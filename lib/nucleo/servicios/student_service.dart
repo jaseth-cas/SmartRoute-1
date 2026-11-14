@@ -6,7 +6,113 @@ import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
 /// Servicio para la gestión de estudiantes matriculados, asignación de cupos y resumen financiero.
 class StudentService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
+  final SupabaseClient? _injectedClient;
+
+  StudentService({SupabaseClient? supabaseClient}) : _injectedClient = supabaseClient;
+
+  SupabaseClient get _supabase => _injectedClient ?? SupabaseConfig.client;
+
+  /// Verifica si un autobús aún dispone de asientos físicos libres antes de matricular (RF-05)
+  bool canEnrollStudent(BusMock bus) {
+    return bus.hasAvailableSeats;
+  }
+
+  /// Matricula un nuevo estudiante en un autobús validando el control de aforo / sobrecupo (RF-05)
+  Future<StudentPassengerMock> enrollStudent({
+    required String name,
+    required String parentName,
+    required String parentPhone,
+    required String pickupAddress,
+    required BusMock bus,
+    String schoolName = 'Colegio San José',
+    double monthlyFee = 65.0,
+  }) async {
+    if (!canEnrollStudent(bus)) {
+      throw StateError(
+        'Capacidad máxima alcanzada en ${bus.code} (${bus.seatsOccupied}/${bus.capacity} cupos ocupados).',
+      );
+    }
+
+    final currentBusStudents = MockData.getPassengersByBus(bus.code);
+    final nextOrder = currentBusStudents.length + 1;
+    final newId = (MockData.passengers.isEmpty
+            ? 0
+            : MockData.passengers.map((p) => p.id).reduce((a, b) => a > b ? a : b)) +
+        1;
+
+    final newStudent = StudentPassengerMock(
+      id: newId,
+      name: name.trim(),
+      parentName: parentName.trim(),
+      parentPhone: parentPhone.trim(),
+      schoolName: schoolName.trim(),
+      pickupAddress: pickupAddress.trim(),
+      busCode: bus.code,
+      routeCode: 'R-UB',
+      order: nextOrder,
+      status: PassengerStatus.waiting,
+      monthlyFee: monthlyFee,
+      paymentStatus: 'Al día',
+    );
+
+    MockData.passengers.add(newStudent);
+    final busIndex = MockData.buses.indexWhere((b) => b.code == bus.code);
+    if (busIndex != -1) {
+      MockData.buses[busIndex] = MockData.buses[busIndex].copyWith(
+        seatsOccupied: MockData.buses[busIndex].seatsOccupied + 1,
+      );
+    }
+
+    try {
+      final inserted = await _supabase
+          .from('estudiantes_pasajeros')
+          .insert({
+            'nombre': newStudent.name,
+            'padre_nombre': newStudent.parentName,
+            'padre_telefono': newStudent.parentPhone,
+            'colegio': newStudent.schoolName,
+            'direccion_recogida': newStudent.pickupAddress,
+            'autobus_codigo': bus.code,
+            'orden': nextOrder,
+            'cuota_mensual': monthlyFee,
+            'estado_pago': 'Al día',
+          })
+          .select()
+          .maybeSingle();
+
+      await _supabase
+          .from('autobuses')
+          .update({'asientos_ocupados': bus.seatsOccupied + 1})
+          .eq('codigo', bus.code);
+
+      if (inserted != null) {
+        return StudentPassengerMock.fromMap(inserted);
+      }
+    } catch (e) {
+      debugPrint('Aviso en enrollStudent Supabase: $e');
+    }
+
+    return newStudent;
+  }
+
+  /// Actualiza el estado de pago de la mensualidad de un estudiante (RF-06)
+  Future<StudentPassengerMock?> updatePaymentStatus({
+    required int studentId,
+    required String status,
+  }) async {
+    final updatedLocal = MockData.updatePaymentStatus(studentId, status);
+
+    try {
+      await _supabase
+          .from('estudiantes_pasajeros')
+          .update({'estado_pago': status})
+          .eq('id', studentId);
+    } catch (e) {
+      debugPrint('Aviso en updatePaymentStatus Supabase: $e');
+    }
+
+    return updatedLocal;
+  }
 
   /// Obtiene los estudiantes asignados a un autobús con su asistencia del día combinada
   Future<List<StudentPassengerMock>> getStudentsByBus(String busCode) async {
@@ -186,18 +292,34 @@ class StudentService {
     }
   }
 
-  /// Actualiza los datos de contacto o dirección de un estudiante
+  /// Actualiza los datos de contacto o dirección de un estudiante (RF-02)
   Future<void> updateStudentProfile({
     required int studentId,
     String? name,
     String? pickupAddress,
     String? parentPhone,
+    String? schoolName,
   }) async {
+    MockData.updateStudentProfile(
+      studentId: studentId,
+      name: name?.trim(),
+      pickupAddress: pickupAddress?.trim(),
+      parentPhone: parentPhone?.trim(),
+      schoolName: schoolName?.trim(),
+    );
+
     try {
       final updates = <String, dynamic>{};
-      if (name != null) updates['nombre'] = name.trim();
-      if (pickupAddress != null) updates['direccion_recogida'] = pickupAddress.trim();
-      if (parentPhone != null) updates['padre_telefono'] = parentPhone.trim();
+      if (name != null && name.trim().isNotEmpty) updates['nombre'] = name.trim();
+      if (pickupAddress != null && pickupAddress.trim().isNotEmpty) {
+        updates['direccion_recogida'] = pickupAddress.trim();
+      }
+      if (parentPhone != null && parentPhone.trim().isNotEmpty) {
+        updates['padre_telefono'] = parentPhone.trim();
+      }
+      if (schoolName != null && schoolName.trim().isNotEmpty) {
+        updates['colegio'] = schoolName.trim();
+      }
 
       if (updates.isNotEmpty) {
         await _supabase

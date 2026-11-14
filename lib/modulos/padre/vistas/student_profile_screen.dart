@@ -3,19 +3,26 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
+import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import '../../../nucleo/tema/colors.dart';
 import '../../../nucleo/widgets/smart_route_card.dart';
 import '../../../nucleo/widgets/session_info_card.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/info_banner.dart';
 
-class StudentProfileScreen extends StatelessWidget {
+class StudentProfileScreen extends StatefulWidget {
   const StudentProfileScreen({super.key});
 
+  @override
+  State<StudentProfileScreen> createState() => _StudentProfileScreenState();
+}
+
+class _StudentProfileScreenState extends State<StudentProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
+    final student = MockData.getPrimaryStudent();
 
     return Scaffold(
       backgroundColor: SmartColors.smartBackground,
@@ -36,7 +43,10 @@ class StudentProfileScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit, color: SmartColors.smartBlue),
-            onPressed: () => context.push('/edit_profile'),
+            onPressed: () async {
+              await context.push('/edit_profile');
+              if (mounted) setState(() {});
+            },
           ),
         ],
       ),
@@ -56,7 +66,7 @@ class StudentProfileScreen extends StatelessWidget {
               child: const Icon(Icons.person, size: 60, color: SmartColors.smartBlue),
             ),
             const SizedBox(height: 16),
-            Text(session?.name ?? 'Usuario', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
+            Text(session?.name ?? student.parentName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: SmartColors.smartText)),
             Text(session?.email ?? 'padre.familia@smartroute.com', style: const TextStyle(fontSize: 14, color: SmartColors.smartGray)),
             const SizedBox(height: 24),
             SmartRouteCard(
@@ -64,11 +74,15 @@ class StudentProfileScreen extends StatelessWidget {
                 children: [
                   _ProfileInfoItem(icon: Icons.badge, label: 'Rol', value: session?.role.displayName ?? 'Padre / Familia'),
                   const Divider(color: SmartColors.smartBorder, height: 16),
-                  const _ProfileInfoItem(icon: Icons.notifications, label: 'Notificaciones', value: 'Activas'),
+                  _ProfileInfoItem(icon: Icons.child_care, label: 'Estudiante representado', value: student.name),
                   const Divider(color: SmartColors.smartBorder, height: 16),
-                  const _ProfileInfoItem(icon: Icons.map, label: 'Ruta escolar', value: 'Ruta Escolar Norte - Col. San José'),
+                  _ProfileInfoItem(icon: Icons.home_outlined, label: 'Dirección de recogida', value: student.pickupAddress),
                   const Divider(color: SmartColors.smartBorder, height: 16),
-                  const _ProfileInfoItem(icon: Icons.place, label: 'Destino escolar', value: 'Colegio San José'),
+                  _ProfileInfoItem(icon: Icons.phone, label: 'Teléfono de emergencia', value: student.parentPhone),
+                  const Divider(color: SmartColors.smartBorder, height: 16),
+                  _ProfileInfoItem(icon: Icons.directions_bus, label: 'Unidad escolar asignada', value: student.busCode),
+                  const Divider(color: SmartColors.smartBorder, height: 16),
+                  _ProfileInfoItem(icon: Icons.place, label: 'Destino escolar', value: student.schoolName),
                 ],
               ),
             ),
@@ -87,7 +101,7 @@ class StudentProfileScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const InfoBanner(
-              text: 'Perfil simulado para fines de demostración académica.',
+              text: 'Datos sincronizados con el perfil del estudiante y tutor en SmartRoute.',
               icon: Icons.info,
             ),
           ],

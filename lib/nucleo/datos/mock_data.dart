@@ -459,6 +459,98 @@ class MockData {
     }
   }
 
+  /// Actualiza los datos de un autobús en la lista local de respaldo (RF-04)
+  static BusMock? updateBus({
+    required String code,
+    String? plate,
+    String? model,
+    int? capacity,
+    String? schoolName,
+    String? routeName,
+    String? status,
+  }) {
+    final index = buses.indexWhere((b) => b.code == code);
+    if (index == -1) return null;
+    buses[index] = buses[index].copyWith(
+      plate: plate,
+      model: model,
+      capacity: capacity,
+      schoolName: schoolName,
+      routeName: routeName,
+      status: status,
+    );
+    return buses[index];
+  }
+
+  /// Asigna un conductor a un autobús escolar en la lista local de respaldo (RF-03)
+  static BusMock? assignDriverToBus({
+    required String busCode,
+    required String driverName,
+  }) {
+    final index = buses.indexWhere((b) => b.code == busCode);
+    if (index == -1) return null;
+    buses[index] = buses[index].copyWith(driverName: driverName);
+    return buses[index];
+  }
+
+  /// Actualiza el estado de pago de la mensualidad de un estudiante (RF-06)
+  static StudentPassengerMock? updatePaymentStatus(int studentId, String newStatus) {
+    final index = passengers.indexWhere((p) => p.id == studentId);
+    if (index == -1) return null;
+    passengers[index] = passengers[index].copyWith(paymentStatus: newStatus);
+    return passengers[index];
+  }
+
+  /// Actualiza el perfil de un estudiante en memoria local (RF-02)
+  static StudentPassengerMock? updateStudentProfile({
+    required int studentId,
+    String? name,
+    String? pickupAddress,
+    String? parentPhone,
+    String? schoolName,
+  }) {
+    final index = passengers.indexWhere((p) => p.id == studentId);
+    if (index == -1) return null;
+    passengers[index] = passengers[index].copyWith(
+      name: name,
+      pickupAddress: pickupAddress,
+      parentPhone: parentPhone,
+      schoolName: schoolName,
+    );
+    return passengers[index];
+  }
+
+  /// Alterna el estado de favorito de una ruta y lo persiste localmente
+  static Future<bool> toggleRouteFavorite(String routeCode) async {
+    final index = routes.indexWhere((r) => r.code == routeCode);
+    if (index == -1) return false;
+    final newFav = !routes[index].isFavorite;
+    routes[index] = routes[index].copyWith(isFavorite: newFav);
+    await saveRoutes();
+    return newFav;
+  }
+
+  /// Alterna el estado de favorito de una parada y lo persiste localmente
+  static Future<bool> toggleStopFavorite(String stopCode) async {
+    final index = stops.indexWhere((s) => s.stopCode == stopCode);
+    if (index == -1) return false;
+    final newFav = !stops[index].isFavorite;
+    stops[index] = stops[index].copyWith(isFavorite: newFav);
+    await saveStops();
+    return newFav;
+  }
+
+  /// Calcula el tiempo estimado de llegada (ETA en minutos) dada la distancia en km y velocidad en km/h (RF-17)
+  static int calculateEtaMinutes({
+    required double distanceKm,
+    required int speedKmH,
+  }) {
+    if (distanceKm <= 0) return 1;
+    final effectiveSpeed = speedKmH > 5 ? speedKmH : 30;
+    final minutes = ((distanceKm / effectiveSpeed) * 60).round();
+    return minutes < 1 ? 1 : minutes;
+  }
+
   /// Resumen financiero y de cupos de la flota para el transportista independiente
   static FleetFinancialSummary getFleetFinancialSummary() {
     int totalSeats = 0;

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
@@ -58,10 +58,20 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                 isFavorite ? Icons.favorite : Icons.favorite_border,
                 color: isFavorite ? Colors.red : SmartColors.smartGray,
               ),
-              onPressed: () {
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final newFav = await MockData.toggleRouteFavorite(widget.routeCode);
+                if (!mounted) return;
                 setState(() {
-                  isFavorite = !isFavorite;
+                  isFavorite = newFav;
                 });
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(newFav ? 'Ruta añadida a favoritas' : 'Ruta eliminada de favoritas'),
+                    duration: const Duration(seconds: 1),
+                    backgroundColor: SmartColors.smartBlue,
+                  ),
+                );
               },
             ),
         ],

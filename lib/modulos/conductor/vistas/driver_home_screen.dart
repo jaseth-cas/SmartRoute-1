@@ -62,8 +62,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     try {
       final busService = context.read<BusService>();
       final studentService = context.read<StudentService>();
+      final session = context.read<SessionManager>().currentSession;
 
-      final bus = await busService.getBusByCode('BUS-01') ??
+      BusMock? assignedBus;
+      if (session != null && session.userId.isNotEmpty) {
+        assignedBus = await busService.getBusByDriver(session.userId);
+      }
+
+      final bus = assignedBus ??
+          await busService.getBusByCode('BUS-01') ??
           MockData.getBusByCode('BUS-01') ??
           MockData.buses.first;
 
@@ -148,6 +155,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
     final passengers = _passengers.isNotEmpty ? _passengers : MockData.getPassengersByBus(bus.code);
     final absentStudents = passengers.where((p) => p.status == PassengerStatus.absent).toList();
+    final routeSavings = context.read<AttendanceService>().calculateRouteSavings(passengers);
     final onboardCount = passengers.where((p) => p.status == PassengerStatus.onboard).length;
     final waitingCount = passengers.where((p) => p.status == PassengerStatus.waiting).length;
 
@@ -259,7 +267,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    '${absentStudents.map((s) => '${s.name} (Parada #${s.order})').join(', ')} no asistirá. Las paradas se omitieron automáticamente de la ruta para optimizar tiempo y combustible.',
+                                    '${absentStudents.map((s) => '${s.name} (Parada #${s.order})').join(', ')} no asistirá. Parada omitida automáticamente (Ahorro estimado: ${routeSavings['savedMinutes']} min / ${routeSavings['savedKilometers']} km).',
                                     style: TextStyle(fontSize: 11, color: Colors.brown.shade800),
                                   ),
                                 ],
