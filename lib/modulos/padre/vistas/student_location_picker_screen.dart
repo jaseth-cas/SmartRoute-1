@@ -5,10 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/servicios/osrm_routing_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/coordinate_parser.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
@@ -38,12 +41,16 @@ class StudentLocationPickerScreen extends StatefulWidget {
   final StudentPassengerMock? student;
   final LatLng? initialCoordinates;
   final String? initialAddress;
+  final OsrmRoutingService? osrmService;
+  final bool enableMap;
 
   const StudentLocationPickerScreen({
     super.key,
     this.student,
     this.initialCoordinates,
     this.initialAddress,
+    this.osrmService,
+    this.enableMap = true,
   });
 
   /// Abre el selector de ubicación de recogida y devuelve un [StudentPickupLocationResult] al confirmar.
@@ -52,6 +59,8 @@ class StudentLocationPickerScreen extends StatefulWidget {
     StudentPassengerMock? student,
     LatLng? initialCoordinates,
     String? initialAddress,
+    OsrmRoutingService? osrmService,
+    bool enableMap = true,
   }) {
     return Navigator.of(context).push<StudentPickupLocationResult>(
       MaterialPageRoute(
@@ -59,6 +68,8 @@ class StudentLocationPickerScreen extends StatefulWidget {
           student: student,
           initialCoordinates: initialCoordinates,
           initialAddress: initialAddress,
+          osrmService: osrmService,
+          enableMap: enableMap,
         ),
       ),
     );
@@ -72,9 +83,10 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
   final MapController _mapController = MapController();
   final TextEditingController _coordController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final OsrmRoutingService _osrmService = OsrmRoutingService();
+  late final OsrmRoutingService _osrmService;
 
   late LatLng _selectedPoint;
+  StudentPassengerMock? _activeStudent;
   LatLng? _snappedStreetPoint;
   String _nearestStreetName = 'Verificando calle transitable...';
   double _distanceToStreetMeters = 0.0;
@@ -87,34 +99,74 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
   bool _isSaving = false;
   double _currentZoom = 16.8;
 
-  // Destino escolar de referencia para previsualizar el enrutamiento real por calles (OSRM)
-  static const LatLng _schoolDestination = LatLng(8.5154, -80.3482);
+  // Destino escolar resuelto dinámicamente para previsualizar el enrutamiento real (OSRM)
+  LatLng get _schoolDestination =>
+      AppConstants.resolveSchoolPoint(_activeStudent?.schoolName);
 
   @override
   void initState() {
     super.initState();
-    final student = widget.student ?? MockData.getPrimaryStudent();
+    _osrmService = widget.osrmService ?? OsrmRoutingService();
+    _activeStudent = widget.student;
+    final s = _activeStudent;
     _selectedPoint = widget.initialCoordinates ??
-        (student.pickupLatitude != null && student.pickupLongitude != null
-            ? LatLng(student.pickupLatitude!, student.pickupLongitude!)
-            : const LatLng(8.5284, -80.3582));
+        (s?.pickupLatitude != null && s?.pickupLongitude != null
+            ? LatLng(s!.pickupLatitude!, s.pickupLongitude!)
+            : AppConstants.penonomeCenter);
 
     _coordController.text = CoordinateParser.formatDd(_selectedPoint);
-    _addressController.text = widget.initialAddress ?? student.pickupAddress;
+    _addressController.text = widget.initialAddress ?? (s?.pickupAddress ?? '');
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _validateStreetAccessAndRoute(_selectedPoint, moveCamera: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _hydrateStudentFromDb();
+      if (mounted) {
+        _validateStreetAccessAndRoute(_selectedPoint, moveCamera: false);
+      }
     });
+  }
+
+  /// GET fresco desde Supabase para evitar trabajar con datos cacheados obsoletos
+  Future<void> _hydrateStudentFromDb() async {
+    try {
+      final studentService = context.read<StudentService>();
+      StudentPassengerMock? fresh;
+      if (_activeStudent != null && _activeStudent!.id > 0) {
+        fresh = await studentService.getStudentById(_activeStudent!.id);
+      } else {
+        final session = context.read<SessionManager>().currentSession;
+        final uid = SupabaseConfig.client.auth.currentUser?.id ?? session?.userId;
+        fresh = await studentService.getPrimaryStudent(uid);
+      }
+      if (fresh != null && mounted) {
+        setState(() {
+          _activeStudent = fresh;
+          if (widget.initialCoordinates == null &&
+              fresh!.pickupLatitude != null &&
+              fresh.pickupLongitude != null) {
+            _selectedPoint = LatLng(fresh.pickupLatitude!, fresh.pickupLongitude!);
+            _coordController.text = CoordinateParser.formatDd(_selectedPoint);
+          }
+          if ((widget.initialAddress == null || widget.initialAddress!.isEmpty) &&
+              _addressController.text.isEmpty) {
+            _addressController.text = fresh!.pickupAddress;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Aviso hidratando estudiante en location picker: $e');
+    }
   }
 
   @override
   void dispose() {
+    _mapController.dispose();
     _coordController.dispose();
     _addressController.dispose();
     super.dispose();
   }
 
-  /// Modalidad A: Captura la posición actual del teléfono con `geolocator` de alta precisión.
+  /// Modalidad A: Captura la posición actual del teléfono con `geolocator` de alta precisión,
+  /// usando el helper centralizado `GpsPermissionHelper`.
   Future<void> _useCurrentDeviceGps() async {
     setState(() {
       _isLocatingGps = true;
@@ -122,29 +174,13 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
     });
 
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
+      final gpsReady = await GpsPermissionHelper.ensureLocationReady(context);
+      if (!gpsReady) {
         if (!mounted) return;
         setState(() {
           _isLocatingGps = false;
           _coordinateError =
-              'El servicio de ubicación GPS del dispositivo está desactivado. Actívalo o usa el mapa / ingreso manual.';
-        });
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        setState(() {
-          _isLocatingGps = false;
-          _coordinateError =
-              'Permiso de ubicación denegado. Concédelo en el navegador/sistema o selecciona el punto en el mapa.';
+              'Activa el GPS y concede el permiso de ubicación en Ajustes, o selecciona el punto en el mapa.';
         });
         return;
       }
@@ -225,7 +261,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
     LatLng point, {
     required bool moveCamera,
   }) async {
-    if (moveCamera) {
+    if (moveCamera && widget.enableMap) {
       _currentZoom = 17.0;
       _mapController.move(point, _currentZoom);
     }
@@ -286,22 +322,45 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
   Future<void> _confirmAndSaveLocation() async {
     setState(() => _isSaving = true);
 
-    final student = widget.student ?? MockData.getPrimaryStudent();
+    final student = _activeStudent;
     final addressText = _addressController.text.trim().isNotEmpty
         ? _addressController.text.trim()
         : '$_nearestStreetName (${CoordinateParser.formatDd(_selectedPoint)})';
 
     try {
-      final studentService = context.read<StudentService>();
-      await studentService.updateStudentPickupLocation(
-        studentId: student.id,
-        latitude: _selectedPoint.latitude,
-        longitude: _selectedPoint.longitude,
-        pickupAddress: addressText,
-        busCode: student.busCode,
-      );
+      if (student != null && student.id > 0) {
+        final studentService = context.read<StudentService>();
+        final updated = await studentService.updateStudentPickupLocation(
+          studentId: student.id,
+          latitude: _selectedPoint.latitude,
+          longitude: _selectedPoint.longitude,
+          pickupAddress: addressText,
+          busCode: student.busCode,
+        );
+        if (updated == null) {
+          throw StateError(
+            'No se pudo actualizar la ubicación del estudiante en PostgreSQL.',
+          );
+        }
+      }
     } catch (e) {
-      debugPrint('Aviso guardando ubicación desde StudentLocationPickerScreen: $e');
+      debugPrint('Error guardando ubicación desde StudentLocationPickerScreen: $e');
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      final raw = e.toString();
+      final msg = raw.contains('SocketException') ||
+              raw.contains('Connection refused') ||
+              raw.contains('54321')
+          ? 'Sin conexión con Supabase (127.0.0.1:54321). Verifica que el túnel USB (adb reverse tcp:54321 tcp:54321) esté activo.'
+          : 'No se pudo guardar la ubicación en la base de datos: $e';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: SmartColors.smartRed,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
     }
 
     if (!mounted) return;
@@ -314,21 +373,27 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
       distanceToStreetMeters: _distanceToStreetMeters,
     );
 
+    final persistedToDb = student != null && student.id > 0;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Ubicación de recogida guardada (${CoordinateParser.formatDd(_selectedPoint)})',
+          persistedToDb
+              ? 'Ubicación guardada en Supabase (${CoordinateParser.formatDd(_selectedPoint)})'
+              : 'Coordenadas seleccionadas (${CoordinateParser.formatDd(_selectedPoint)}). Guarda cambios para registrar en la BD.',
         ),
         backgroundColor: SmartColors.smartGreen,
       ),
     );
 
-    Navigator.of(context).pop(result);
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(result);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final student = widget.student ?? MockData.getPrimaryStudent();
+    final student = _activeStudent;
+    final studentLabel = student?.name ?? 'Estudiante';
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -371,7 +436,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
                             ),
                           ),
                           Text(
-                            'Ubicación de Recogida (${student.name})',
+                            'Ubicación de Recogida ($studentLabel)',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
@@ -393,8 +458,8 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
                 ResponsiveTwoColumns(
                   breakpoint: 900,
                   spacing: 24,
-                  left: _buildControlsPanel(student),
-                  right: _buildInteractiveMapCard(student),
+                  left: _buildControlsPanel(studentLabel),
+                  right: _buildInteractiveMapCard(studentLabel),
                 ),
               ],
             ),
@@ -404,7 +469,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
     );
   }
 
-  Widget _buildControlsPanel(StudentPassengerMock student) {
+  Widget _buildControlsPanel(String studentName) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -686,7 +751,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
     );
   }
 
-  Widget _buildInteractiveMapCard(StudentPassengerMock student) {
+  Widget _buildInteractiveMapCard(String studentName) {
     final snapped = _snappedStreetPoint;
     final isMobile = MediaQuery.sizeOf(context).width < 600;
 
@@ -695,24 +760,30 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
       padding: const EdgeInsets.all(10),
       child: SizedBox(
         height: isMobile ? 380 : 540,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            children: [
-              FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _selectedPoint,
-                  initialZoom: _currentZoom,
-                  minZoom: 11.0,
-                  maxZoom: 18.5,
-                  onTap: (_, latLng) => _onMapTapped(latLng),
+        child: !widget.enableMap
+            ? Center(
+                child: Text(
+                  'Mapa Penonomé: ${CoordinateParser.formatDd(_selectedPoint)}',
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.smartroute.smartroute_flutter',
-                  ),
+              )
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _selectedPoint,
+                        initialZoom: _currentZoom,
+                        minZoom: 11.0,
+                        maxZoom: 18.5,
+                        onTap: (_, latLng) => _onMapTapped(latLng),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.smartroute.smartroute_flutter',
+                        ),
                   PolylineLayer(
                     polylines: [
                       // Ruta real sobre calles transitables (OSRM) hacia el colegio
@@ -813,7 +884,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
                         height: isMobile ? 30 : 64,
                         child: isMobile
                             ? Tooltip(
-                                message: 'Domicilio: ${student.name}',
+                                message: 'Domicilio: $studentName',
                                 child: Container(
                                   width: 28,
                                   height: 28,
@@ -851,7 +922,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
                                       ],
                                     ),
                                     child: Text(
-                                      'DOMICILIO: ${student.name.toUpperCase()}',
+                                      'DOMICILIO: ${studentName.toUpperCase()}',
                                       style: GoogleFonts.jetBrainsMono(
                                         fontSize: 8.5,
                                         fontWeight: FontWeight.w800,
@@ -887,7 +958,7 @@ class _StudentLocationPickerScreenState extends State<StudentLocationPickerScree
                         height: isMobile ? 28 : 52,
                         child: isMobile
                             ? Tooltip(
-                                message: 'Colegio San José (Destino)',
+                                message: '${_activeStudent?.schoolName ?? 'Colegio Destino'} (Destino)',
                                 child: Container(
                                   width: 26,
                                   height: 26,

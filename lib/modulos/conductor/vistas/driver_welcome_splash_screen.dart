@@ -235,7 +235,7 @@ class _DriverWelcomeSplashScreenState extends State<DriverWelcomeSplashScreen>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                'CONDUCTOR ASIGNADO • UNIDAD TBX-492',
+                                'CONDUCTOR ASIGNADO • SMARTROUTE',
                                 style: GoogleFonts.jetBrainsMono(
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w800,

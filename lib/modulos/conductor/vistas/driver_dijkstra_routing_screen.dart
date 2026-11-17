@@ -1,23 +1,35 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/modulos/conductor/vistas/driver_card_sorting_screen.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/osrm_routing_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/route_optimizer_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/telemetry_simulation_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
 /// Pantalla 3 del nuevo flujo del conductor:
-/// Ventana completa del mapa con simulación animada del cálculo de camino mínimo con Dijkstra
-/// por alumno, consolidación de la ruta óptima final y regreso al panel principal del conductor.
+/// Ventana completa del mapa con cálculo real de camino mínimo con Dijkstra sobre coordenadas
+/// reales de estudiantes activos, trazado de calles vía OSRM (con fallback offline)
+/// y consolidación de la ruta óptima final hacia el panel principal del conductor.
 class DriverDijkstraRoutingScreen extends StatefulWidget {
   final List<StudentStopCardItem>? orderedStudents;
+  final OsrmRoutingService? osrmService;
 
   const DriverDijkstraRoutingScreen({
     super.key,
     this.orderedStudents,
+    this.osrmService,
   });
 
   @override
@@ -27,22 +39,33 @@ class DriverDijkstraRoutingScreen extends StatefulWidget {
 class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScreen>
     with TickerProviderStateMixin {
   late final MapController _mapController;
+  late final OsrmRoutingService _osrmRoutingService;
+  late final RouteOptimizerService _routeOptimizer;
+  BusTelemetryController? _telemetryController;
+  Future<void> Function()? _unsubscribeRouteTriggers;
 
-  // Lista ordenada de estudiantes proveniente del Card Sorting
+  // Lista ordenada de estudiantes activos (sin ausentes) tras aplicar Dijkstra
   late List<StudentStopCardItem> _students;
+  BusMock? _activeBus;
 
   // Coordenadas clave en Penonomé
-  final LatLng _busOrigin = const LatLng(8.5270, -80.3512);
-  final LatLng _schoolDest = const LatLng(8.5154, -80.3482);
+  LatLng _busOrigin = AppConstants.penonomeCenter;
+  LatLng _schoolDest = AppConstants.defaultSchoolPoint;
+  String _schoolName = 'Colegio Ángel María Herrera';
+  List<({String name, LatLng point})> _schoolDestinations = const [];
 
-  // Fases de la animación de Dijkstra (0 = Inicio, 1 = Alumno 1, 2 = Alumno 2, 3 = Alumno 3, 4 = Alumno 4, 5 = Final)
+  // Fases de la animación de Dijkstra
   int _currentStep = 0;
   String _algorithmStatusText = 'Inicializando Grafo G(V, E) en Penonomé...';
   String _dijkstraFormulaText = 'd(v) = min(d(v), d(u) + w(u,v))';
   double _calculationProgress = 0.0;
   bool _isRouteOptimized = false;
+  bool _hasNavigated = false;
+  bool _userInteractedWithSim = false;
+  bool _routeRecalculatedBanner = false;
+  double _totalRouteDistanceMeters = 0.0;
 
-  // Segmentos de ruta calculados y fijados por Dijkstra
+  // Segmentos de ruta calculados y fijados por Dijkstra + OSRM
   final List<List<LatLng>> _confirmedSegments = [];
   // Segmentos explorados/candidatos que parpadean durante el escaneo
   List<LatLng> _currentScanningSegment = [];
@@ -50,82 +73,264 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
   Timer? _stepTimer;
   Timer? _autoFinishTimer;
 
-  // Nodos de grafo completo
-  late List<LatLng> _graphNodes;
-
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
+    _osrmRoutingService = widget.osrmService ?? OsrmRoutingService();
+    _routeOptimizer = RouteOptimizerService(osrmService: _osrmRoutingService);
+    _students = (widget.orderedStudents ?? const <StudentStopCardItem>[])
+        .where((s) => !s.isAbsent)
+        .toList();
 
-    // Si no se pasaron estudiantes por extra, usar valores por defecto
-    _students = widget.orderedStudents ?? [
-      StudentStopCardItem(
-        id: 1,
-        name: 'Mateo Gómez',
-        pickupAddress: 'Vía hacia Sonadora',
-        schoolName: 'Colegio San José',
-        grade: '4° Primaria',
-        position: const LatLng(8.5281, -80.3565),
-        distanceMeters: 620,
-        estimatedTime: '07:05 AM',
-      ),
-      StudentStopCardItem(
-        id: 2,
-        name: 'Sofía Martínez',
-        pickupAddress: 'Conjunto El Roble',
-        schoolName: 'Colegio San José',
-        grade: '5° Primaria',
-        position: const LatLng(8.5242, -80.3522),
-        distanceMeters: 940,
-        estimatedTime: '07:12 AM',
-      ),
-      StudentStopCardItem(
-        id: 3,
-        name: 'Lucas Rodríguez',
-        pickupAddress: 'Av. 19 # 104-50',
-        schoolName: 'Colegio San José',
-        grade: '3° Primaria',
-        position: const LatLng(8.5215, -80.3532),
-        distanceMeters: 1420,
-        estimatedTime: '07:18 AM',
-      ),
-      StudentStopCardItem(
-        id: 5,
-        name: 'Eliam Fernández',
-        pickupAddress: 'Vía Cristo Rey',
-        schoolName: 'Colegio San José',
-        grade: '6° Primaria',
-        position: const LatLng(8.5186, -80.3541),
-        distanceMeters: 1880,
-        estimatedTime: '07:24 AM',
-      ),
-    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initTelemetryAndSubscriptions();
+      _initStudentsAndSimulate();
+    });
+  }
 
-    _graphNodes = [
-      _busOrigin,
-      ..._students.map((s) => s.position),
-      const LatLng(8.5172, -80.3540), // Giro barriada escolar
-      const LatLng(8.5160, -80.3522), // Calle conexión
-      _schoolDest,
-    ];
+  void _initTelemetryAndSubscriptions() {
+    if (!mounted) return;
+    BusService? busService;
+    try {
+      busService = context.read<BusService>();
+    } catch (_) {}
+    _telemetryController = BusTelemetryController(busService: busService)
+      ..addListener(_onTelemetryTick);
 
-    // Iniciar simulación por pasos del algoritmo de Dijkstra
-    _startDijkstraSimulation();
+    try {
+      final studentService = context.read<StudentService>();
+      AttendanceService? attendanceService;
+      try {
+        attendanceService = context.read<AttendanceService>();
+      } catch (_) {}
+      _unsubscribeRouteTriggers = RouteOptimizerService.subscribeToRouteTriggers(
+        studentService: studentService,
+        attendanceService: attendanceService,
+        channelPrefix: 'driver_dijkstra_route',
+        onRouteDataChanged: _recalculateRouteLive,
+      );
+    } catch (e) {
+      debugPrint('Aviso suscribiendo recálculo en vivo Dijkstra: $e');
+    }
+  }
+
+  void _onTelemetryTick() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _recalculateRouteLive() async {
+    if (!mounted || _activeBus == null) return;
+    try {
+      final studentService = context.read<StudentService>();
+      final freshStudents = await studentService.getStudentsByBus(_activeBus!.code);
+      final optimized = await _routeOptimizer.buildOptimalRoute(
+        bus: _activeBus!,
+        students: freshStudents,
+      );
+      if (!mounted) return;
+
+      final updatedCards = optimized.orderedActiveStudents.map((s) {
+        final pos = (s.pickupLatitude != null && s.pickupLongitude != null)
+            ? LatLng(s.pickupLatitude!, s.pickupLongitude!)
+            : AppConstants.penonomeCenter;
+        final dist = OsrmRoutingService.calculateDistanceMeters(_busOrigin, pos);
+        final eta = AppConstants.calculateEtaMinutes(
+          distanceKm: dist / 1000.0,
+          speedKmH: 28,
+        );
+        return StudentStopCardItem(
+          id: s.id,
+          name: s.name,
+          pickupAddress: s.pickupAddress,
+          schoolName: s.schoolName,
+          grade: '${s.busCode} • Parada #${s.order}',
+          position: pos,
+          distanceMeters: dist,
+          estimatedTime: '~$eta min',
+        );
+      }).toList();
+
+      setState(() {
+        _students = updatedCards;
+        _schoolDestinations = optimized.orderedSchools;
+        _totalRouteDistanceMeters = optimized.totalDistanceMeters;
+        _confirmedSegments
+          ..clear()
+          ..addAll(optimized.segments);
+        _routeRecalculatedBanner = true;
+      });
+      _telemetryController?.updateRoute(optimized, preserveProgress: true);
+    } catch (e) {
+      debugPrint('Aviso recalculando ruta en vivo: $e');
+    }
+  }
+
+  Future<void> _initStudentsAndSimulate() async {
+    try {
+      final session = context.read<SessionManager>().currentSession;
+      final busService = context.read<BusService>();
+      final studentService = context.read<StudentService>();
+      final bus = (session != null && session.userId.isNotEmpty)
+          ? await busService.getBusByDriver(session.userId)
+          : null;
+      _activeBus = bus;
+
+      if (bus?.latitude != null && bus?.longitude != null) {
+        _busOrigin = LatLng(bus!.latitude!, bus.longitude!);
+      }
+
+      if (_students.isEmpty) {
+        final list = bus != null
+            ? await studentService.getStudentsByBus(bus.code)
+            : await studentService.getAllStudents();
+        _students = list
+            .where((s) => s.status != PassengerStatus.absent)
+            .map((s) {
+              final pos = (s.pickupLatitude != null && s.pickupLongitude != null)
+                  ? LatLng(s.pickupLatitude!, s.pickupLongitude!)
+                  : AppConstants.penonomeCenter;
+              final distFromOrigin =
+                  OsrmRoutingService.calculateDistanceMeters(_busOrigin, pos);
+              final etaMin = AppConstants.calculateEtaMinutes(
+                distanceKm: distFromOrigin / 1000.0,
+                speedKmH: 28,
+              );
+              return StudentStopCardItem(
+                id: s.id,
+                name: s.name,
+                pickupAddress: s.pickupAddress,
+                schoolName: s.schoolName,
+                grade: '${s.busCode} • Parada #${s.order}',
+                position: pos,
+                distanceMeters: distFromOrigin,
+                estimatedTime: '~$etaMin min',
+              );
+            })
+            .toList();
+      }
+
+      final coveredSchools = BusService.extractCoveredSchools(
+        _students.map(
+          (s) => StudentPassengerMock(
+            id: s.id,
+            name: s.name,
+            parentName: '',
+            parentPhone: '',
+            schoolName: s.schoolName,
+            pickupAddress: s.pickupAddress,
+            busCode: bus?.code ?? 'BUS-01',
+            routeCode: bus?.code ?? 'BUS-01',
+            order: 1,
+            status: PassengerStatus.waiting,
+          ),
+        ),
+        fallbackSchool: bus?.schoolName,
+      );
+
+      if (coveredSchools.isNotEmpty) {
+        _schoolDestinations = coveredSchools
+            .map((name) => (name: name, point: AppConstants.resolveSchoolPoint(name)))
+            .toList();
+        _schoolName = coveredSchools.length == 1
+            ? coveredSchools.first
+            : '${coveredSchools.length} colegios destino';
+        _schoolDest = _schoolDestinations.first.point;
+      } else {
+        _schoolDestinations = [
+          (name: _schoolName, point: AppConstants.defaultSchoolPoint),
+        ];
+      }
+
+      // Ejecutar optimización real de Dijkstra sobre el grafo G(V, E)
+      if (_students.isNotEmpty) {
+        final result = OsrmRoutingService.optimizeStopsWithDijkstra(
+          origin: _busOrigin,
+          stopPoints: _students.map((s) => s.position).toList(),
+          destination: _schoolDest,
+        );
+        _totalRouteDistanceMeters = result.totalDistanceMeters;
+        double cumulativeMeters = 0.0;
+        final reordered = <StudentStopCardItem>[];
+        for (int i = 0; i < result.orderedIndices.length; i++) {
+          final original = _students[result.orderedIndices[i]];
+          final legMeters = result.legDistancesMeters[i];
+          cumulativeMeters += legMeters;
+          final etaMin = AppConstants.calculateEtaMinutes(
+            distanceKm: cumulativeMeters / 1000.0,
+            speedKmH: 28,
+          );
+          reordered.add(
+            StudentStopCardItem(
+              id: original.id,
+              name: original.name,
+              pickupAddress: original.pickupAddress,
+              schoolName: original.schoolName,
+              grade: original.grade,
+              position: original.position,
+              distanceMeters: legMeters,
+              estimatedTime: '~$etaMin min',
+              photoAsset: original.photoAsset,
+              isAbsent: false,
+            ),
+          );
+        }
+        _students = reordered;
+      }
+    } catch (e) {
+      debugPrint('Aviso inicializando Dijkstra routing: $e');
+    }
+
+    if (!mounted) return;
+    await _startDijkstraSimulation();
   }
 
   @override
   void dispose() {
     _stepTimer?.cancel();
     _autoFinishTimer?.cancel();
+    _telemetryController?.removeListener(_onTelemetryTick);
+    _telemetryController?.dispose();
+    unawaited(_unsubscribeRouteTriggers?.call() ?? Future<void>.value());
+    _mapController.dispose();
     super.dispose();
   }
 
-  void _startDijkstraSimulation() {
-    int step = 0;
-    const totalSteps = 6;
+  Future<void> _startDijkstraSimulation() async {
+    if (_students.isEmpty) {
+      setState(() {
+        _isRouteOptimized = true;
+        _calculationProgress = 1.0;
+        _algorithmStatusText = 'Ruta lista hacia $_schoolName';
+      });
+      _autoFinishTimer = Timer(const Duration(milliseconds: 1500), _goToDriverHomeScreen);
+      return;
+    }
 
-    _stepTimer = Timer.periodic(const Duration(milliseconds: 1300), (timer) {
+    // Precalcular tramos reales sobre calles con OSRM (y fallback offline automático)
+    final osrmSegments = <List<LatLng>>[];
+    for (int i = 0; i < _students.length; i++) {
+      final prevPos = i == 0 ? _busOrigin : _students[i - 1].position;
+      final seg = await _osrmRoutingService.getDrivingRoute([prevPos, _students[i].position]);
+      osrmSegments.add(seg.length >= 2 ? seg : [prevPos, _students[i].position]);
+    }
+    final destPoints = _schoolDestinations.isNotEmpty
+        ? _schoolDestinations.map((d) => d.point).toList()
+        : [_schoolDest];
+    final finalSeg = await _osrmRoutingService.getDrivingRoute([
+      _students.last.position,
+      ...destPoints,
+    ]);
+    osrmSegments.add(
+      finalSeg.length >= 2 ? finalSeg : [_students.last.position, ...destPoints],
+    );
+
+    if (!mounted) return;
+
+    int step = 0;
+    final totalSteps = _students.length + 2;
+
+    _stepTimer = Timer.periodic(const Duration(milliseconds: 900), (timer) {
       step++;
       if (!mounted) {
         timer.cancel();
@@ -136,74 +341,69 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
         _currentStep = step;
         _calculationProgress = (step / totalSteps).clamp(0.0, 1.0);
 
-        if (step == 1) {
-          // Fase 1: Dijkstra para Alumno 1
-          final student = _students[0];
-          _algorithmStatusText = 'Dijkstra: Explorando camino mínimo hacia ${student.name}...';
-          _dijkstraFormulaText = 'Nodo Origen TBX-492 -> Parada 01: Evaluando 3 aristas adyacentes';
-          _currentScanningSegment = [_busOrigin, const LatLng(8.5278, -80.3530), student.position];
-          _confirmedSegments.add([
-            _busOrigin,
-            const LatLng(8.5276, -80.3535),
-            student.position,
-          ]);
-        } else if (step == 2) {
-          // Fase 2: Dijkstra para Alumno 2
-          final student = _students[1];
-          _algorithmStatusText = 'Dijkstra: Relajando aristas hacia ${student.name}...';
-          _dijkstraFormulaText = 'dist[Parada 02] = dist[Parada 01] + w(e): Arista mínima elegida (540m)';
-          _currentScanningSegment = [_students[0].position, const LatLng(8.5260, -80.3540), student.position];
-          _confirmedSegments.add([
-            _students[0].position,
-            const LatLng(8.5255, -80.3538),
-            student.position,
-          ]);
-        } else if (step == 3) {
-          // Fase 3: Dijkstra para Alumno 3
-          final student = _students[2];
-          _algorithmStatusText = 'Dijkstra: Optimizando tramo para ${student.name}...';
-          _dijkstraFormulaText = 'Evaluando semáforos y flujo: Vía Sonadora Sur seleccionada';
-          _currentScanningSegment = [_students[1].position, student.position];
-          _confirmedSegments.add([
-            _students[1].position,
-            const LatLng(8.5228, -80.3528),
-            student.position,
-          ]);
-        } else if (step == 4) {
-          // Fase 4: Dijkstra para Alumno 4
-          final student = _students[3];
-          _algorithmStatusText = 'Dijkstra: Calculando camino mínimo para ${student.name}...';
-          _dijkstraFormulaText = 'Min-Heap: Extracción nodo de menor costo -> ${student.name} confirmado';
-          _currentScanningSegment = [_students[2].position, student.position];
-          _confirmedSegments.add([
-            _students[2].position,
-            const LatLng(8.5200, -80.3536),
-            student.position,
-          ]);
-        } else if (step == 5) {
-          // Fase 5: Conexión con Destino Colegio San José
-          _algorithmStatusText = 'Dijkstra: Enlazando con Destino Final Colegio San José...';
-          _dijkstraFormulaText = 'Tramo de acceso escolar: Vía Simón Bolívar -> Colegio San José';
-          _currentScanningSegment = [_students.last.position, const LatLng(8.5160, -80.3522), _schoolDest];
-          _confirmedSegments.add([
-            _students.last.position,
-            const LatLng(8.5172, -80.3540),
-            const LatLng(8.5160, -80.3522),
-            const LatLng(8.5156, -80.3500),
-            _schoolDest,
-          ]);
-        } else if (step >= 6) {
-          // Fase 6: Consolidación Final de la Ruta Óptima
+        if (step <= _students.length) {
+          final idx = step - 1;
+          final student = _students[idx];
+          final segPoints = osrmSegments[idx];
+          _algorithmStatusText =
+              'Dijkstra: Parada $step (${student.name}) • ${student.formattedDistance}';
+          _dijkstraFormulaText =
+              'd(v) = min(d(v), d(u) + w(u,v)) • ETA ${student.estimatedTime}';
+          _currentScanningSegment = segPoints;
+          _confirmedSegments.add(segPoints);
+        } else if (step == _students.length + 1) {
+          final segPoints = osrmSegments.last;
+          _algorithmStatusText = 'Dijkstra: Enlazando con $_schoolName...';
+          _dijkstraFormulaText = 'Tramo final sobre red vial OSRM';
+          _currentScanningSegment = segPoints;
+          _confirmedSegments.add(segPoints);
+        } else {
           timer.cancel();
           _isRouteOptimized = true;
           _calculationProgress = 1.0;
           _currentScanningSegment = [];
-          _algorithmStatusText = '¡Ruta Óptima Calculada Exitosamente!';
-          _dijkstraFormulaText = 'Costo Mínimo Global: 4.8 km • 14 min • 0 alertas de congestión';
+          final totalKm = (_totalRouteDistanceMeters / 1000.0).toStringAsFixed(2);
+          _algorithmStatusText = '¡Ruta Óptima Calculada ($totalKm km)!';
+          _dijkstraFormulaText =
+              '${_students.length} paradas activas optimizadas con Dijkstra + OSRM';
 
-          // Auto-transición al panel principal del conductor en 3.5 segundos
-          _autoFinishTimer = Timer(const Duration(milliseconds: 3600), () {
-            _goToDriverHomeScreen();
+          // Cargar ruta consolidada en el motor de telemetría
+          final fullPts = <LatLng>[];
+          for (final seg in osrmSegments) {
+            for (int k = 0; k < seg.length; k++) {
+              if (fullPts.isEmpty || k > 0) fullPts.add(seg[k]);
+            }
+          }
+          final waypointsMeta = <RouteWaypointMeta>[
+            for (final s in _students)
+              RouteWaypointMeta(label: 'Casa: ${s.name}', point: s.position, isSchool: false),
+            for (final d in (_schoolDestinations.isNotEmpty
+                ? _schoolDestinations
+                : [(name: _schoolName, point: _schoolDest)]))
+              RouteWaypointMeta(label: d.name, point: d.point, isSchool: true),
+          ];
+          _telemetryController?.updateRoute(
+            OptimizedBusRoute(
+              busCode: _activeBus?.code ?? 'BUS-01',
+              origin: _busOrigin,
+              orderedActiveStudents: const [],
+              orderedSchools: _schoolDestinations,
+              polylinePoints: fullPts,
+              segments: List<List<LatLng>>.from(osrmSegments),
+              waypointsMeta: waypointsMeta,
+              totalDistanceMeters: _totalRouteDistanceMeters,
+              estimatedMinutes: AppConstants.calculateEtaMinutes(
+                distanceKm: _totalRouteDistanceMeters / 1000.0,
+                speedKmH: 34,
+              ),
+            ),
+            preserveProgress: false,
+          );
+
+          _autoFinishTimer = Timer(const Duration(milliseconds: 2200), () {
+            if (!_userInteractedWithSim) {
+              _goToDriverHomeScreen();
+            }
           });
         }
       });
@@ -211,6 +411,8 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
   }
 
   void _goToDriverHomeScreen() {
+    if (_hasNavigated) return;
+    _hasNavigated = true;
     _stepTimer?.cancel();
     _autoFinishTimer?.cancel();
     if (mounted) {
@@ -285,7 +487,7 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                     width: 140,
                     height: 52,
                     child: _buildNodeMarker(
-                      title: 'INICIO TBX-492',
+                      title: 'INICIO DE RUTA',
                       subtitle: 'Posición actual',
                       icon: Icons.directions_bus_filled_rounded,
                       color: SmartColors.deepBlue,
@@ -312,17 +514,47 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                     );
                   }),
 
-                  // Destino: Colegio San José
-                  Marker(
-                    point: _schoolDest,
-                    width: 140,
-                    height: 52,
-                    child: _buildNodeMarker(
-                      title: 'COL. SAN JOSÉ',
-                      subtitle: 'Destino Final',
-                      icon: Icons.school_rounded,
-                      color: SmartColors.smartGreen,
-                      isHighlighted: _isRouteOptimized,
+                  // Marcador en vivo del autobús simulado / GPS real
+                  if (_telemetryController != null)
+                    Marker(
+                      point: _telemetryController!.currentPosition,
+                      width: 56,
+                      height: 56,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: SmartColors.deepBlack,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: SmartColors.vibrantCyan, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: SmartColors.vibrantCyan.withValues(alpha: 0.45),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.directions_bus_filled_rounded,
+                          color: SmartColors.vibrantCyan,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  // Destinos: Todos los colegios cubiertos por los estudiantes activos
+                  ...(_schoolDestinations.isNotEmpty
+                          ? _schoolDestinations
+                          : [(name: _schoolName, point: _schoolDest)])
+                      .map(
+                    (dest) => Marker(
+                      point: dest.point,
+                      width: 155,
+                      height: 52,
+                      child: _buildNodeMarker(
+                        title: dest.name.toUpperCase(),
+                        subtitle: 'Destino Escolar',
+                        icon: Icons.school_rounded,
+                        color: SmartColors.smartGreen,
+                        isHighlighted: _isRouteOptimized,
+                      ),
                     ),
                   ),
                 ],
@@ -359,13 +591,13 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Fila Superior: Badge Algoritmo y Botón Omitir
+                      // Fila Superior: Badge Algoritmo y Botón Omitir (sin overflow en pantallas de 360px)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Container(
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                 decoration: BoxDecoration(
                                   color: _isRouteOptimized
@@ -374,6 +606,7 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Container(
                                       width: 6,
@@ -384,26 +617,32 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                                       ),
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      _isRouteOptimized ? 'DIJKSTRA // ÓPTIMO ALCANZADO' : 'DIJKSTRA // CALCULANDO RUTA MÍNIMA',
-                                      style: GoogleFonts.jetBrainsMono(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.6,
-                                        color: _isRouteOptimized ? SmartColors.vibrantCyan : SmartColors.smartYellow,
+                                    Flexible(
+                                      child: Text(
+                                        _isRouteOptimized
+                                            ? 'DIJKSTRA // ÓPTIMO'
+                                            : 'DIJKSTRA // RUTA MÍNIMA',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.jetBrainsMono(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.5,
+                                          color: _isRouteOptimized ? SmartColors.vibrantCyan : SmartColors.smartYellow,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-
+                          const SizedBox(width: 8),
                           // Botón Omitir e ir directamente al mapa principal
                           GestureDetector(
                             onTap: _goToDriverHomeScreen,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: SmartColors.neuInset.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(8),
@@ -412,14 +651,14 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    'OMITIR E IR AL MAPA',
+                                    'OMITIR',
                                     style: GoogleFonts.jetBrainsMono(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w700,
                                       color: Colors.white70,
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   const Icon(Icons.skip_next_rounded, size: 14, color: Colors.white70),
                                 ],
                               ),
@@ -493,6 +732,118 @@ class _DriverDijkstraRoutingScreenState extends State<DriverDijkstraRoutingScree
                           ),
                         ),
                       ),
+                      if (_isRouteOptimized && _telemetryController != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${_telemetryController!.currentSpeedKmH.toStringAsFixed(0)} km/h • Próx: ${_telemetryController!.nextStopLabel}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () {
+                                _userInteractedWithSim = true;
+                                _autoFinishTimer?.cancel();
+                                if (_telemetryController!.isPlaying) {
+                                  _telemetryController!.pause();
+                                } else {
+                                  _telemetryController!.start();
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: SmartColors.vibrantCyan.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _telemetryController!.isPlaying ? 'PAUSAR' : 'SIMULAR',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: SmartColors.vibrantCyan,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () {
+                                _userInteractedWithSim = true;
+                                _autoFinishTimer?.cancel();
+                                final next = _telemetryController!.speedMultiplier == 1.0 ? 2.0 : 1.0;
+                                _telemetryController!.setSpeedMultiplier(next);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white12,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${_telemetryController!.speedMultiplier.toInt()}x',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () {
+                                _userInteractedWithSim = true;
+                                _autoFinishTimer?.cancel();
+                                final nextMode =
+                                    _telemetryController!.mode == TelemetryMode.simulated
+                                        ? TelemetryMode.realGps
+                                        : TelemetryMode.simulated;
+                                _telemetryController!.setMode(nextMode);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white12,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _telemetryController!.mode == TelemetryMode.simulated
+                                      ? 'SIM'
+                                      : 'GPS',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: SmartColors.smartYellow,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_routeRecalculatedBanner) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '↻ Ruta recalculada automáticamente con cambios en tiempo real',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: SmartColors.smartGreen,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

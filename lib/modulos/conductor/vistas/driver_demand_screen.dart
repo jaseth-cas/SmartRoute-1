@@ -5,13 +5,14 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/facial_boarding_dialog.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
@@ -26,16 +27,30 @@ class DriverDemandScreen extends StatefulWidget {
 
 class _DriverDemandScreenState extends State<DriverDemandScreen> {
   String _selectedFilter = 'Todos';
-  BusMock? _bus = MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-  List<StudentPassengerMock> _allPassengers = MockData.getPassengersByBus('BUS-01');
-  bool _isLoading = false;
+  BusMock? _bus;
+  List<StudentPassengerMock> _allPassengers = [];
+  bool _isLoading = true;
   StreamSubscription? _attendanceSub;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+  RealtimeChannel? _studentsRealtimeChannel;
+  StudentService? _studentService;
 
   @override
   void initState() {
     super.initState();
+    _locationSub = StudentService.locationUpdatesStream.listen((updated) {
+      if (!mounted) return;
+      setState(() {
+        final idx = _allPassengers.indexWhere((p) => p.id == updated.id);
+        if (idx != -1) {
+          _allPassengers[idx] = updated;
+        } else if (_bus != null && updated.busCode == _bus!.code) {
+          _allPassengers = [..._allPassengers, updated];
+        }
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadManifest(silent: true);
+      _loadManifest(silent: false);
       _subscribeToRealtimeAttendance();
     });
   }
@@ -43,22 +58,35 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
   @override
   void dispose() {
     _attendanceSub?.cancel();
+    _locationSub?.cancel();
+    _studentService?.unsubscribeChannel(_studentsRealtimeChannel);
     super.dispose();
   }
 
   void _subscribeToRealtimeAttendance() {
     try {
       final attendanceService = context.read<AttendanceService>();
+      final studentService = context.read<StudentService>();
+      _studentService = studentService;
+
       _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
         _loadManifest(silent: true);
       });
+      _studentsRealtimeChannel = studentService.subscribeToStudentChanges(
+        channelName: 'driver_demand_estudiantes_${DateTime.now().millisecondsSinceEpoch}',
+        onChanged: () {
+          if (mounted) {
+            _loadManifest(silent: true);
+          }
+        },
+      );
     } catch (e) {
       debugPrint('Aviso en suscripción de asistencia: $e');
     }
   }
 
   Future<void> _loadManifest({bool silent = false}) async {
-    if (!silent && mounted) {
+    if (!silent && _bus == null && mounted) {
       setState(() => _isLoading = true);
     }
 
@@ -67,26 +95,28 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       final studentService = context.read<StudentService>();
       final session = context.read<SessionManager>().currentSession;
 
-      // Ejecutar consulta de bus y estudiantes en paralelo con Future.wait
-      final results = await Future.wait([
-        (session != null && session.userId.isNotEmpty)
-            ? busService.getBusByDriver(session.userId)
-            : busService.getBusByCode('BUS-01'),
-        studentService.getStudentsByBus('BUS-01'),
-      ]);
+      BusMock? bus;
+      if (session != null && session.userId.isNotEmpty) {
+        bus = await busService.getBusByDriver(session.userId);
+      }
 
-      final bus = (results[0] as BusMock?) ??
-          MockData.getBusByCode('BUS-01') ??
-          MockData.buses.first;
+      if (bus == null) {
+        if (mounted) {
+          setState(() {
+            _bus = null;
+            _allPassengers = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
 
-      final passengers = bus.code == 'BUS-01'
-          ? (results[1] as List<StudentPassengerMock>)
-          : await studentService.getStudentsByBus(bus.code);
+      final passengers = await studentService.getStudentsByBus(bus.code);
 
       if (mounted) {
         setState(() {
           _bus = bus;
-          _allPassengers = passengers.isNotEmpty ? passengers : MockData.getPassengersByBus(bus.code);
+          _allPassengers = passengers;
           _isLoading = false;
         });
       }
@@ -94,10 +124,6 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       debugPrint('Error cargando manifiesto de conductor: $e');
       if (mounted) {
         setState(() {
-          _bus ??= MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-          if (_allPassengers.isEmpty) {
-            _allPassengers = MockData.getPassengersByBus(_bus!.code);
-          }
           _isLoading = false;
         });
       }
@@ -153,10 +179,52 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bus = _bus ?? MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final passengers = _allPassengers.isNotEmpty
-        ? _allPassengers
-        : MockData.getPassengersByBus(bus.code);
+    final bus = _bus;
+    if (bus == null) {
+      return Scaffold(
+        backgroundColor: SmartColors.neuBackground,
+        bottomNavigationBar: DriverBottomBar(
+          currentRoute: '/driver_demand',
+          onNavigate: (route) => context.go(route),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: SmartColors.deepBlue))
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const EmptyState(
+                        message: 'Sin autobús asignado',
+                        subMessage:
+                            'El dueño de flota aún no te ha asignado una unidad escolar.',
+                        icon: Icons.directions_bus_outlined,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _loadManifest(silent: false),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('REINTENTAR'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: SmartColors.deepBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      );
+    }
+    final passengers = _allPassengers;
 
     final waitingCount = passengers.where((p) => p.status == PassengerStatus.waiting).length;
     final onboardCount = passengers.where((p) => p.status == PassengerStatus.onboard).length;

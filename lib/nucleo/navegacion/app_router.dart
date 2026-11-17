@@ -110,7 +110,7 @@ class AppRouter {
                 context,
                 targetRoute: targetRoute,
                 title: 'INGRESANDO AL PANEL PRINCIPAL',
-                subtitle: 'Sincronizando la unidad escolar Toyota HiAce (TBX-492)...',
+                subtitle: 'Sincronizando unidad escolar en Penonomé...',
                 badge: 'SMARTROUTE OS',
               );
             },

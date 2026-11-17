@@ -13,6 +13,7 @@ import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -26,10 +27,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final AuthService _authService = AuthService();
-  final TextEditingController _emailController =
-      TextEditingController(text: 'carlos.gomez@smartroute.com');
-  final TextEditingController _passwordController =
-      TextEditingController(text: '123456');
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   UserRole selectedRole = UserRole.student;
   bool passwordVisible = false;
   bool _isLoading = false;
@@ -41,24 +40,24 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String _emailHintForRole(UserRole role) {
+    switch (role) {
+      case UserRole.student:
+        return 'padre1@smartroute.com';
+      case UserRole.driver:
+        return 'conductor@smartroute.com';
+      case UserRole.owner:
+        return 'dueno@smartroute.com';
+    }
+  }
+
   void _updateCredentialsForRole(UserRole role) {
     setState(() {
       selectedRole = role;
-      switch (role) {
-        case UserRole.student:
-          _emailController.text = 'carlos.gomez@smartroute.com';
-          break;
-        case UserRole.driver:
-          _emailController.text = 'juan.conductor@smartroute.com';
-          break;
-        case UserRole.owner:
-          _emailController.text = 'transportes.gomez@smartroute.com';
-          break;
-      }
     });
   }
 
-  void _enterRole(UserRole role, {String? customName}) {
+  Future<void> _enterRole(UserRole role, {String? customName}) async {
     String resolvedName = customName ?? _emailController.text;
     if (customName == null && _emailController.text.contains('@')) {
       resolvedName = _emailController.text.split('@')[0];
@@ -69,6 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (customName == null) {
       context.read<SessionManager>().login(role, customName: resolvedName);
     }
+
+    await GpsPermissionHelper.ensureLocationReady(context);
+    if (!mounted) return;
 
     final targetRoute = role == UserRole.student
         ? '/student_home'
@@ -87,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
       targetRoute: targetRoute,
       title: 'ACCEDIENDO COMO $roleLabel',
       subtitle:
-          'Iniciando sesión segura y sincronizando la unidad escolar TBX-492...',
+          'Iniciando sesión segura y sincronizando telemetría de ruta en Penonomé...',
       badge: 'AUTENTICACIÓN TRANSIT OS',
     );
   }
@@ -136,21 +138,41 @@ class _LoginScreenState extends State<LoginScreen> {
               token: session.accessToken,
             );
 
-        _enterRole(matchedRole, customName: nombre);
+        await _enterRole(matchedRole, customName: nombre);
         return;
       }
+      throw StateError('No se recibió una sesión válida desde Supabase.');
     } catch (e) {
-      debugPrint('Aviso Supabase login (continuando con flujo Transit OS): $e');
+      debugPrint('Error en Supabase login: $e');
+      if (mounted) {
+        final raw = e.toString();
+        final String msg;
+        if (raw.contains('SocketException') ||
+            raw.contains('Connection refused') ||
+            raw.contains('54321') ||
+            raw.contains('TimeoutException')) {
+          msg =
+              'Sin conexión con Supabase (127.0.0.1:54321). Verifica Docker o ejecuta: adb reverse tcp:54321 tcp:54321.';
+        } else if (raw.contains('Invalid login credentials') ||
+            raw.contains('invalid_credentials')) {
+          msg = 'Correo o contraseña incorrectos en Supabase.';
+        } else {
+          msg = 'No se pudo iniciar sesión: $e';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: SmartColors.smartRed,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
-    }
-
-    if (mounted) {
-      _enterRole(selectedRole);
     }
   }
 
@@ -540,15 +562,16 @@ class _LoginScreenState extends State<LoginScreen> {
           CustomTextField(
             controller: _emailController,
             label: 'Correo Electrónico',
-            hint: 'correo@smartroute.com',
+            hint: _emailHintForRole(selectedRole),
             prefixIcon: Icons.alternate_email_rounded,
+            keyboardType: TextInputType.emailAddress,
             validator: Validators.validateEmail,
           ),
           const SizedBox(height: 16),
           CustomTextField(
             controller: _passwordController,
             label: 'Contraseña',
-            hint: '••••••••',
+            hint: 'Ingresa tu contraseña',
             prefixIcon: Icons.lock_outline_rounded,
             isPassword: !passwordVisible,
             validator: Validators.validatePassword,

@@ -36,7 +36,7 @@ class RoleSwitcherBar extends StatelessWidget {
       context,
       targetRoute: targetRoute,
       title: 'CAMBIANDO A PERFIL $roleLabel',
-      subtitle: 'Sincronizando la unidad escolar Toyota HiAce (TBX-492)...',
+      subtitle: 'Sincronizando datos en tiempo real...',
       badge: 'CONMUTACIÓN DE PERFIL',
       duration: const Duration(milliseconds: 1600),
     );

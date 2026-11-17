@@ -8,9 +8,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
@@ -86,12 +87,20 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     });
   }
 
-  void _subscribeToLiveBus() {
+  Future<void> _subscribeToLiveBus() async {
     try {
       final busService = context.read<BusService>();
-      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+      final busCode = busService.normalizeBusCode(widget.routeCode);
+      final effectiveCode = busCode.isNotEmpty ? busCode : 'BUS-01';
 
-      _busSub = busService.streamBusByCode(busCode).listen((bus) {
+      final fetchedBus = await busService.getBusByCode(effectiveCode);
+      if (mounted) {
+        setState(() {
+          _liveBus = fetchedBus;
+        });
+      }
+
+      _busSub = busService.streamBusByCode(effectiveCode).listen((bus) {
         if (bus != null && mounted) {
           setState(() {
             _liveBus = bus;
@@ -110,24 +119,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     super.dispose();
   }
 
-  Future<void> _determinePosition() async {
+  Future<void> _determinePosition({bool showPrompt = false}) async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) setState(() => _isLoadingLocation = false);
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) setState(() => _isLoadingLocation = false);
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
+      final gpsReady = await GpsPermissionHelper.ensureLocationReady(
+        context,
+        showPromptIfDisabled: showPrompt,
+      );
+      if (!gpsReady) {
         if (mounted) setState(() => _isLoadingLocation = false);
         return;
       }
@@ -140,7 +138,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         });
         _mapController.move(_currentPosition!, _currentZoom);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Aviso obteniendo ubicación en mapa de padre: $e');
       if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
@@ -163,7 +162,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     } catch (e) {
       debugPrint('Error sincronizando bus: $e');
     }
-    await _determinePosition();
+    await _determinePosition(showPrompt: true);
     if (mounted) {
       setState(() => isUpdating = false);
     }
@@ -198,8 +197,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final route = MockData.getRouteByCode(widget.routeCode);
-    final bus = _liveBus ?? MockData.getBusByCode(route?.busCode ?? "BUS-01");
+    final bus = _liveBus;
 
     return PopScope(
       canPop: context.canPop(),
@@ -470,7 +468,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
             // Marcadores de los 9 Colegios y Escuelas de Penonomé mapeados con Punto Rojo
             if (_showSchools)
-              ...MockData.penonomeSchools.map((school) {
+              ...AppConstants.penonomeSchools.map((school) {
                 final isSelected = _selectedSchool?.id == school.id;
                 return Marker(
                   point: LatLng(school.latitude, school.longitude),
@@ -546,9 +544,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             isPill: true,
             padding: const EdgeInsets.all(12),
             onTap: () {
-              final route = MockData.getRouteByCode(widget.routeCode);
-              final bus = MockData.getBusByCode(route?.busCode ?? "BUS-01");
-              _openBusLiveCameraModal(bus);
+              _openBusLiveCameraModal(_liveBus);
             },
             child: const Icon(Icons.videocam_rounded, size: 20, color: SmartColors.primaryCrimson),
           ),
@@ -1053,7 +1049,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                   child: _buildMetricCol(
                     label: 'PLACA',
                     subLabel: 'MATRÍCULA',
-                    value: bus?.plate ?? 'TBX-492',
+                    value: bus?.plate ?? 'Sin placa',
                     icon: Icons.confirmation_number_outlined,
                   ),
                 ),
@@ -2068,10 +2064,10 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           height: 36,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: MockData.penonomeSchools.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemCount: AppConstants.penonomeSchools.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
-              final school = MockData.penonomeSchools[index];
+              final school = AppConstants.penonomeSchools[index];
               final isSelected = _selectedSchool?.id == school.id;
               return GestureDetector(
                 onTap: () {
@@ -2189,7 +2185,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         const SizedBox(height: 14),
 
         // Lista de instituciones
-        ...MockData.penonomeSchools.map((school) {
+        ...AppConstants.penonomeSchools.map((school) {
           final isSelected = _selectedSchool?.id == school.id;
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -2514,7 +2510,7 @@ class _BusLiveCameraDialogState extends State<_BusLiveCameraDialog> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    'PLACA: ${widget.bus?.plate ?? 'TBX-492'}  •  MODELO: ${widget.bus?.model ?? 'Toyota HiAce'}  •  CONDUCTOR: ${widget.bus?.driverName ?? 'Juan Pérez'}',
+                    'PLACA: ${widget.bus?.plate ?? '--'}  •  MODELO: ${widget.bus?.model ?? 'Unidad escolar'}  •  CONDUCTOR: ${widget.bus?.driverName ?? 'Sin asignar'}',
                     style: GoogleFonts.jetBrainsMono(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
@@ -2631,7 +2627,7 @@ class _BusLiveCameraDialogState extends State<_BusLiveCameraDialog> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        '${widget.bus?.code ?? 'BUS-01'} • ${widget.bus?.model ?? 'Toyota HiAce'} [${widget.bus?.plate ?? 'TBX-492'}]',
+                        '${widget.bus?.code ?? 'SIN BUS'} • ${widget.bus?.model ?? 'Unidad Escolar'} [${widget.bus?.plate ?? '--'}]',
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w800,

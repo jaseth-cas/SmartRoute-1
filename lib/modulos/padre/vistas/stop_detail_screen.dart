@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
@@ -24,20 +26,41 @@ class StopDetailScreen extends StatefulWidget {
 }
 
 class _StopDetailScreenState extends State<StopDetailScreen> {
-  late bool isFavorite;
+  bool isFavorite = false;
   bool isAlertEnabled = true;
+  StopMock? _stop;
+  RouteMock? _route;
 
   @override
   void initState() {
     super.initState();
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    isFavorite = stop?.isFavorite ?? false;
+    _loadStopDetail();
+  }
+
+  Future<void> _loadStopDetail() async {
+    try {
+      final busService = context.read<BusService>();
+      final stop = await busService.getStopByCode(widget.stopCode);
+      RouteMock? route;
+      if (stop != null) {
+        route = await busService.getRouteByCode(stop.routeCode);
+      }
+      if (mounted) {
+        setState(() {
+          _stop = stop;
+          _route = route;
+          isFavorite = stop?.isFavorite ?? false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando detalle de parada: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    final route = stop != null ? MockData.getRouteByCode(stop.routeCode) : null;
+    final stop = _stop;
+    final route = _route;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -85,7 +108,10 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                   ),
                   onPressed: () async {
                     final messenger = ScaffoldMessenger.of(context);
-                    final newFav = await MockData.toggleStopFavorite(widget.stopCode);
+                    final updated = await context
+                        .read<BusService>()
+                        .toggleStopFavorite(widget.stopCode, !isFavorite);
+                    final newFav = updated?.isFavorite ?? !isFavorite;
                     if (!mounted) return;
                     setState(() {
                       isFavorite = newFav;

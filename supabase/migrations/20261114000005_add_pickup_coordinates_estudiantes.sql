@@ -1,10 +1,36 @@
 -- ==============================================================
--- MIGRACIÓN: COORDENADAS EXACTAS DE RECOGIDA EN ESTUDIANTES
+-- MIGRACIÓN: COORDENADAS EXACTAS DE RECOGIDA EN ESTUDIANTES Y RLS PARADAS
 -- ==============================================================
 
 alter table public.estudiantes_pasajeros
     add column if not exists latitud_recogida double precision,
     add column if not exists longitud_recogida double precision;
+
+-- Permitir INSERT y UPDATE en paradas_ruta y estudiantes_pasajeros para sincronizar ubicaciones GPS
+DROP POLICY IF EXISTS "paradas_select_policy" ON public.paradas_ruta;
+DROP POLICY IF EXISTS "paradas_all_policy" ON public.paradas_ruta;
+
+CREATE POLICY "paradas_all_policy"
+    ON public.paradas_ruta FOR ALL
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "estudiantes_all_policy" ON public.estudiantes_pasajeros;
+CREATE POLICY "estudiantes_all_policy"
+    ON public.estudiantes_pasajeros FOR ALL
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir lectura de perfiles autenticados" ON public.perfiles;
+DROP POLICY IF EXISTS "Usuarios pueden actualizar su propio perfil" ON public.perfiles;
+DROP POLICY IF EXISTS "perfiles_all_policy" ON public.perfiles;
+CREATE POLICY "perfiles_all_policy"
+    ON public.perfiles FOR ALL
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 -- Actualizar coordenadas de recogida para los estudiantes semilla (Penonomé)
 update public.estudiantes_pasajeros

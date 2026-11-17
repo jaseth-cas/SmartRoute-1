@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
@@ -24,18 +26,40 @@ class RouteDetailScreen extends StatefulWidget {
 }
 
 class _RouteDetailScreenState extends State<RouteDetailScreen> {
-  late bool isFavorite;
+  bool isFavorite = false;
+  RouteMock? _route;
+  List<StopMock> _stops = [];
 
   @override
   void initState() {
     super.initState();
-    final route = MockData.getRouteByCode(widget.routeCode);
-    isFavorite = route?.isFavorite ?? false;
+    _loadRouteDetail();
+  }
+
+  Future<void> _loadRouteDetail() async {
+    try {
+      final busService = context.read<BusService>();
+      final results = await Future.wait([
+        busService.getRouteByCode(widget.routeCode),
+        busService.getStopsByBusCode(widget.routeCode),
+      ]);
+      final fetchedRoute = results[0] as RouteMock?;
+      final fetchedStops = results[1] as List<StopMock>;
+      if (mounted) {
+        setState(() {
+          _route = fetchedRoute;
+          _stops = fetchedStops;
+          isFavorite = fetchedRoute?.isFavorite ?? false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando detalle de ruta: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final route = MockData.getRouteByCode(widget.routeCode);
+    final route = _route;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -81,16 +105,14 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                     color: isFavorite ? SmartColors.primaryCrimson : SmartColors.smartGray,
                     size: 20,
                   ),
-                  onPressed: () async {
+                  onPressed: () {
                     final messenger = ScaffoldMessenger.of(context);
-                    final newFav = await MockData.toggleRouteFavorite(widget.routeCode);
-                    if (!mounted) return;
                     setState(() {
-                      isFavorite = newFav;
+                      isFavorite = !isFavorite;
                     });
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text(newFav ? 'Ruta añadida a favoritas' : 'Ruta eliminada de favoritas'),
+                        content: Text(isFavorite ? 'Ruta añadida a favoritas' : 'Ruta eliminada de favoritas'),
                         duration: const Duration(seconds: 1),
                         backgroundColor: SmartColors.deepBlue,
                       ),
@@ -208,7 +230,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                       Expanded(
                         child: _MetricMiniCard(
                           icon: Icons.format_list_numbered_rounded,
-                          value: MockData.getStopsByRouteCode(route.code).length.toString().padLeft(2, '0'),
+                          value: _stops.length.toString().padLeft(2, '0'),
                           label: 'PARADAS PROGRAMADAS',
                         ),
                       ),
@@ -216,7 +238,9 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                       Expanded(
                         child: _MetricMiniCard(
                           icon: Icons.straighten_rounded,
-                          value: route.code == "R-BU" ? "4.5 km" : "9.0 km",
+                          value: _stops.isNotEmpty
+                              ? '${_stops.map((s) => s.distanceFromStartKm).reduce((a, b) => a > b ? a : b).toStringAsFixed(1)} km'
+                              : '3.5 km',
                           label: 'DISTANCIA TOTAL',
                         ),
                       ),
@@ -233,7 +257,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
 
                   GestureDetector(
                     onTap: () {
-                      final stopCode = MockData.getStopsByRouteCode(route.code).firstOrNull?.stopCode ?? "P-BU-001";
+                      final stopCode = _stops.firstOrNull?.stopCode ?? 'EST-1';
                       context.go('/map/${route.code}/$stopCode');
                     },
                     child: Container(

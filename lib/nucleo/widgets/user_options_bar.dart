@@ -318,8 +318,8 @@ class UserAppBarActions extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 role == UserRole.driver
-                    ? 'Conductor Asignado • Unidad BUS-01 (TBX-492)'
-                    : 'Transportista Titular • Flota Gómez',
+                    ? 'Conductor Asignado • Unidad Activa'
+                    : 'Transportista Titular • Flota Activa',
                 style: GoogleFonts.plusJakartaSans(fontSize: 12.5, color: SmartColors.smartGray),
               ),
               const SizedBox(height: 16),

@@ -9,7 +9,10 @@ import '../../../nucleo/widgets/neumorphic_box.dart';
 import '../../../nucleo/widgets/primary_button.dart';
 import '../../../nucleo/widgets/custom_text_field.dart';
 import '../../../nucleo/widgets/responsive_layout.dart';
+import '../../../nucleo/widgets/school_selector_field.dart';
+import '../../../nucleo/servicios/auth_service.dart';
 import '../../../nucleo/servicios/bus_service.dart';
+import '../../autenticacion/datos/session_manager.dart';
 
 class RegisterBusScreen extends StatefulWidget {
   const RegisterBusScreen({super.key});
@@ -25,10 +28,29 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
   String plate = "";
   String model = "";
   int capacity = 24;
-  String school = "Colegio San José";
+  String school = "Colegio Ángel María Herrera";
+  String? _selectedDriverId;
+  List<Map<String, dynamic>> _drivers = [];
   bool _isLoading = false;
 
   final TextEditingController _capacityController = TextEditingController(text: "24");
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDrivers();
+  }
+
+  Future<void> _loadDrivers() async {
+    try {
+      final list = await context.read<AuthService>().getAvailableDrivers();
+      if (mounted) {
+        setState(() {
+          _drivers = list;
+        });
+      }
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -43,12 +65,15 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
 
       try {
         final busService = context.read<BusService>();
-        final newBus = await busService.registerBus(
+        final ownerId = context.read<SessionManager>().currentSession?.userId;
+        final newBus = await busService.createBus(
           code: code,
           plate: plate,
           model: model,
           capacity: capacity,
-          schoolName: school.isNotEmpty ? school : 'Colegio San José',
+          schoolName: school.isNotEmpty ? school : 'Colegio Ángel María Herrera',
+          driverId: _selectedDriverId,
+          ownerId: ownerId,
         );
 
         if (!mounted) return;
@@ -88,13 +113,27 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        final errorMsg = e.toString().contains('23505') || e.toString().contains('unique')
-            ? 'Ya existe una unidad con ese código o placa en el sistema.'
-            : 'Error al registrar unidad: $e';
+        final raw = e.toString();
+        final String errorMsg;
+        if (raw.contains('SocketException') ||
+            raw.contains('Connection refused') ||
+            raw.contains('54321') ||
+            raw.contains('TimeoutException')) {
+          errorMsg =
+              'Sin conexión con Supabase (127.0.0.1:54321). Verifica Docker o ejecuta: adb reverse tcp:54321 tcp:54321.';
+        } else if (raw.contains('23505') ||
+            raw.contains('unique') ||
+            raw.contains('409') ||
+            raw.contains('Conflict')) {
+          errorMsg = 'Conflicto: ya existe un autobús con ese código o placa en la base de datos.';
+        } else {
+          errorMsg = 'Error al registrar unidad: $e';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
             backgroundColor: SmartColors.smartRed,
+            duration: const Duration(seconds: 5),
           ),
         );
       } finally {
@@ -240,6 +279,13 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                     onChanged: (value) => model = value,
                     validator: (val) => Validators.validateRequired(val, fieldName: 'El modelo'),
                   ),
+                  const SizedBox(height: 18),
+
+                  SchoolSelectorField(
+                    label: 'COLEGIO BASE (PUEDE CUBRIR VARIOS)',
+                    initialValue: school,
+                    onChanged: (value) => school = value,
+                  ),
                   const SizedBox(height: 24),
 
                   // Control de Capacidad Quivox Style (Selector [ - ] [ + ] y chips)
@@ -323,6 +369,36 @@ class _RegisterBusScreenState extends State<RegisterBusScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
+
+                  const SizedBox(height: 16),
+                  if (_drivers.isNotEmpty) ...[
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selectedDriverId,
+                      decoration: InputDecoration(
+                        labelText: 'Conductor asignado (opcional)',
+                        filled: true,
+                        fillColor: SmartColors.neuSurface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Sin asignar por ahora'),
+                        ),
+                        ..._drivers.map(
+                          (d) => DropdownMenuItem<String?>(
+                            value: d['id']?.toString(),
+                            child: Text(d['nombre']?.toString() ?? 'Conductor'),
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) => setState(() => _selectedDriverId = val),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Botón Guardar Cápsula Quivox
                   PrimaryButton(

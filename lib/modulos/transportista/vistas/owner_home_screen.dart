@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
@@ -15,6 +16,7 @@ import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/widgets/school_selector_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 import 'package:smartroute_flutter/nucleo/widgets/user_options_bar.dart';
 import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
@@ -27,22 +29,42 @@ class OwnerHomeScreen extends StatefulWidget {
 }
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
-  List<BusMock> _buses = MockData.buses;
-  List<StudentPassengerMock> _passengers = MockData.passengers;
-  FleetFinancialSummary _financialSummary = const FleetFinancialSummary(
-    totalSeats: 36,
-    occupiedSeats: 32,
-    totalRevenue: 2080.0,
-    pendingRevenue: 65.0,
-    pendingPaymentsCount: 1,
-    totalStudents: 5,
-  );
-  bool _isLoading = false;
+  List<BusMock> _buses = [];
+  List<StudentPassengerMock> _passengers = [];
+  FleetFinancialSummary _financialSummary = FleetFinancialSummary.empty;
+  bool _isLoading = true;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+  RealtimeChannel? _studentsRealtimeChannel;
+  StudentService? _studentService;
 
   @override
   void initState() {
     super.initState();
-    _loadFleetData();
+    _locationSub = StudentService.locationUpdatesStream.listen((_) {
+      if (mounted) _loadFleetData();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadFleetData();
+      try {
+        final studentService = context.read<StudentService>();
+        _studentService = studentService;
+        _studentsRealtimeChannel = studentService.subscribeToStudentChanges(
+          channelName: 'owner_home_estudiantes_${DateTime.now().millisecondsSinceEpoch}',
+          onChanged: () {
+            if (mounted) _loadFleetData();
+          },
+        );
+      } catch (e) {
+        debugPrint('Aviso suscribiendo Realtime en OwnerHomeScreen: $e');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _locationSub?.cancel();
+    _studentService?.unsubscribeChannel(_studentsRealtimeChannel);
+    super.dispose();
   }
 
   Future<void> _loadFleetData() async {
@@ -80,6 +102,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     }
   }
 
+  /* [DESHABILITADO TEMPORALMENTE] Pasarela de pago / control de cobros aún no contemplada.
   Future<void> _cyclePaymentStatus(StudentPassengerMock student) async {
     final nextStatus = switch (student.paymentStatus) {
       'Al día' => 'Pendiente',
@@ -102,15 +125,38 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
       ),
     );
   }
+  */
 
-  void _showEnrollStudentDialog() {
-    final activeBuses = _buses.isNotEmpty ? _buses : MockData.buses;
-    if (activeBuses.isEmpty) return;
+  Future<void> _showEnrollStudentDialog() async {
+    final activeBuses = _buses;
+    if (activeBuses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Registra primero al menos un autobús en la flota.'),
+          backgroundColor: SmartColors.smartRed,
+        ),
+      );
+      return;
+    }
+
+    final studentService = context.read<StudentService>();
+    List<StudentPassengerMock> catalog = List<StudentPassengerMock>.from(_passengers);
+    try {
+      final fetched = await studentService.getSearchableStudentsCatalog();
+      if (fetched.isNotEmpty) catalog = fetched;
+    } catch (_) {}
+
+    if (!mounted) return;
+
     final formKey = GlobalKey<FormState>();
-    String studentName = '';
-    String parentName = '';
-    String parentPhone = '';
-    String pickupAddress = '';
+    final searchController = TextEditingController();
+    final parentNameController = TextEditingController();
+    final parentPhoneController = TextEditingController();
+    final pickupAddressController = TextEditingController();
+
+    StudentPassengerMock? selectedExistingStudent;
+    bool isDropdownOpen = true;
+    bool openMapAfterAssign = false;
     BusMock selectedBus = activeBuses.first;
 
     showDialog(
@@ -118,89 +164,370 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           final hasSeats = selectedBus.hasAvailableSeats;
+          final query = searchController.text.trim().toLowerCase();
+
+          final filteredStudents = catalog.where((s) {
+            if (query.isEmpty) return true;
+            return s.name.toLowerCase().contains(query) ||
+                s.parentName.toLowerCase().contains(query) ||
+                s.pickupAddress.toLowerCase().contains(query) ||
+                s.busCode.toLowerCase().contains(query);
+          }).toList();
+
+          void selectStudentFromList(StudentPassengerMock student) {
+            setDialogState(() {
+              selectedExistingStudent = student;
+              searchController.text = student.name;
+              searchController.selection = TextSelection.fromPosition(
+                TextPosition(offset: searchController.text.length),
+              );
+              parentNameController.text = student.parentName;
+              parentPhoneController.text = student.parentPhone;
+              pickupAddressController.text = student.pickupAddress;
+              openMapAfterAssign = student.pickupLatitude == null || student.pickupLongitude == null;
+              isDropdownOpen = false;
+            });
+          }
+
           return AlertDialog(
             backgroundColor: SmartColors.neuSurface,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             title: Text(
               'ASIGNAR CUPO ESCOLAR (RF-05)',
               style: GoogleFonts.jetBrainsMono(
                 fontWeight: FontWeight.w800,
-                fontSize: 15,
+                fontSize: 14,
                 color: SmartColors.deepBlack,
-                letterSpacing: 0.8,
+                letterSpacing: 0.6,
               ),
             ),
-            content: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedBus.code,
-                      decoration: InputDecoration(
-                        labelText: 'Autobús Escolar',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. Selector de Autobús Escolar
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedBus.code,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Autobús Escolar Destino',
+                          prefixIcon: const Icon(Icons.directions_bus_rounded, color: SmartColors.deepBlue, size: 20),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: activeBuses.map((b) {
+                          return DropdownMenuItem(
+                            value: b.code,
+                            child: Text(
+                              '${b.code} (${b.seatsOccupied}/${b.capacity} cupos)',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (code) {
+                          if (code != null) {
+                            setDialogState(() {
+                              selectedBus = activeBuses.firstWhere((b) => b.code == code);
+                            });
+                          }
+                        },
                       ),
-                      items: activeBuses.map((b) {
-                        return DropdownMenuItem(
-                          value: b.code,
-                          child: Text('${b.code} (${b.seatsOccupied}/${b.capacity} cupos)'),
-                        );
-                      }).toList(),
-                      onChanged: (code) {
-                        if (code != null) {
+                      if (!hasSeats) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Esta unidad no tiene asientos libres disponibles (Sobrecupo bloqueado).',
+                          style: TextStyle(color: SmartColors.smartRed, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // 2. Select con Búsqueda Avanzada de Estudiante
+                      TextFormField(
+                        controller: searchController,
+                        decoration: InputDecoration(
+                          labelText: 'Buscar y Seleccionar Estudiante',
+                          hintText: 'Escribe ej. "jase", "mateo"...',
+                          prefixIcon: const Icon(Icons.person_search_rounded, color: SmartColors.deepBlue),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (searchController.text.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'Limpiar búsqueda',
+                                  icon: const Icon(Icons.clear_rounded, size: 18, color: SmartColors.smartGray),
+                                  onPressed: () {
+                                    setDialogState(() {
+                                      searchController.clear();
+                                      selectedExistingStudent = null;
+                                      isDropdownOpen = true;
+                                    });
+                                  },
+                                ),
+                              IconButton(
+                                tooltip: isDropdownOpen ? 'Ocultar lista' : 'Desplegar lista de estudiantes',
+                                icon: Icon(
+                                  isDropdownOpen
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  color: SmartColors.deepBlack,
+                                ),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    isDropdownOpen = !isDropdownOpen;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (v) => Validators.validateRequired(v, fieldName: 'El estudiante'),
+                        onTap: () {
                           setDialogState(() {
-                            selectedBus = activeBuses.firstWhere((b) => b.code == code);
+                            isDropdownOpen = true;
                           });
-                        }
-                      },
-                    ),
-                    if (!hasSeats) ...[
+                        },
+                        onChanged: (v) {
+                          setDialogState(() {
+                            isDropdownOpen = true;
+                            if (selectedExistingStudent != null &&
+                                selectedExistingStudent!.name.toLowerCase() != v.trim().toLowerCase()) {
+                              selectedExistingStudent = null;
+                            }
+                          });
+                        },
+                      ),
+
+                      // Lista Desplegable del Select con Búsqueda Avanzada
+                      if (isDropdownOpen) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 185),
+                          decoration: BoxDecoration(
+                            color: SmartColors.neuBackground,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: SmartColors.deepBlue.withValues(alpha: 0.22),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: filteredStudents.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.person_add_alt_1_rounded, size: 18, color: SmartColors.deepBlue),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Sin coincidencias en lista. Se registrará a "${searchController.text.trim()}" como nuevo estudiante.',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: SmartColors.deepPetrol,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  itemCount: filteredStudents.length,
+                                  separatorBuilder: (_, _) => Divider(
+                                    height: 1,
+                                    color: SmartColors.neuBorder.withValues(alpha: 0.6),
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final item = filteredStudents[index];
+                                    final isSelected = selectedExistingStudent?.id == item.id;
+                                    final hasGps = item.pickupLatitude != null && item.pickupLongitude != null;
+
+                                    return InkWell(
+                                      onTap: () => selectStudentFromList(item),
+                                      child: Container(
+                                        color: isSelected
+                                            ? SmartColors.vibrantCyan.withValues(alpha: 0.14)
+                                            : Colors.transparent,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 15,
+                                              backgroundColor: isSelected
+                                                  ? SmartColors.deepBlack
+                                                  : SmartColors.deepBlue.withValues(alpha: 0.12),
+                                              child: Text(
+                                                item.name.isNotEmpty ? item.name[0].toUpperCase() : 'E',
+                                                style: GoogleFonts.jetBrainsMono(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: isSelected
+                                                      ? SmartColors.vibrantCyan
+                                                      : SmartColors.deepBlue,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          item.name,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: GoogleFonts.plusJakartaSans(
+                                                            fontSize: 13,
+                                                            fontWeight: FontWeight.w800,
+                                                            color: SmartColors.deepBlack,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                        decoration: BoxDecoration(
+                                                          color: SmartColors.deepBlack,
+                                                          borderRadius: BorderRadius.circular(5),
+                                                        ),
+                                                        child: Text(
+                                                          item.busCode,
+                                                          style: GoogleFonts.jetBrainsMono(
+                                                            fontSize: 8,
+                                                            fontWeight: FontWeight.w800,
+                                                            color: SmartColors.vibrantCyan,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (hasGps) ...[
+                                                        const SizedBox(width: 4),
+                                                        const Icon(
+                                                          Icons.location_on_rounded,
+                                                          size: 13,
+                                                          color: SmartColors.smartGreen,
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'Tutor: ${item.parentName} • ${item.pickupAddress}',
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: GoogleFonts.plusJakartaSans(
+                                                      fontSize: 10.5,
+                                                      color: SmartColors.smartGray,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            if (isSelected)
+                                              const Icon(
+                                                Icons.check_circle_rounded,
+                                                color: SmartColors.smartGreen,
+                                                size: 18,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+
+                      if (selectedExistingStudent != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: SmartColors.smartLightGreen,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.verified_rounded, size: 15, color: SmartColors.smartGreen),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  selectedExistingStudent!.pickupLatitude != null
+                                      ? 'Estudiante seleccionado con ubicación GPS ya vinculada.'
+                                      : 'Estudiante seleccionado. Sus datos se autocompletaron.',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: SmartColors.smartGreen,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: parentNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Nombre del Padre / Tutor',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (v) => Validators.validateRequired(v, fieldName: 'El tutor'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: parentPhoneController,
+                        decoration: InputDecoration(
+                          labelText: 'Teléfono de Emergencia',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        keyboardType: TextInputType.phone,
+                        validator: (v) => Validators.validatePhone(v, required: true),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: pickupAddressController,
+                        decoration: InputDecoration(
+                          labelText: 'Dirección de Recogida',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (v) => Validators.validateRequired(v, fieldName: 'La dirección'),
+                      ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Esta unidad no tiene asientos libres disponibles (Sobrecupo bloqueado).',
-                        style: TextStyle(color: SmartColors.smartRed, fontSize: 11, fontWeight: FontWeight.bold),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: SmartColors.deepBlue,
+                        value: openMapAfterAssign,
+                        title: Text(
+                          'Abrir mapa GPS / coordenadas al guardar',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: SmartColors.deepBlack,
+                          ),
+                        ),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            openMapAfterAssign = val ?? false;
+                          });
+                        },
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Nombre del Estudiante',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      validator: (v) => Validators.validateRequired(v, fieldName: 'El nombre'),
-                      onChanged: (v) => studentName = v,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Nombre del Padre / Tutor',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      validator: (v) => Validators.validateRequired(v, fieldName: 'El tutor'),
-                      onChanged: (v) => parentName = v,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Teléfono de Emergencia',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      keyboardType: TextInputType.phone,
-                      validator: (v) => Validators.validatePhone(v, required: true),
-                      onChanged: (v) => parentPhone = v,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Dirección de Recogida',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      validator: (v) => Validators.validateRequired(v, fieldName: 'La dirección'),
-                      onChanged: (v) => pickupAddress = v,
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -225,29 +552,42 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                     ? null
                     : () async {
                         if (!formKey.currentState!.validate()) return;
+                        final finalStudentName = searchController.text.trim();
+                        final finalParentName = parentNameController.text.trim();
+                        final finalParentPhone = parentPhoneController.text.trim();
+                        final finalPickupAddress = pickupAddressController.text.trim();
                         Navigator.pop(ctx);
                         try {
-                          final studentService = context.read<StudentService>();
-                          final createdStudent = await studentService.enrollStudent(
-                            name: studentName,
-                            parentName: parentName,
-                            parentPhone: parentPhone,
-                            pickupAddress: pickupAddress,
+                          final assignedStudent = await studentService.assignOrEnrollStudent(
+                            existingStudent: selectedExistingStudent,
+                            name: finalStudentName,
+                            parentName: finalParentName,
+                            parentPhone: finalParentPhone,
+                            pickupAddress: finalPickupAddress,
                             bus: selectedBus,
-                            schoolName: selectedBus.schoolName ?? 'Colegio San José',
+                            schoolName: selectedExistingStudent?.schoolName.trim().isNotEmpty == true
+                                ? selectedExistingStudent!.schoolName
+                                : (selectedBus.schoolName != null &&
+                                        selectedBus.schoolName!.toLowerCase() != 'múltiples colegios'
+                                    ? selectedBus.schoolName!
+                                    : 'Colegio Ángel María Herrera'),
+                            parentId: selectedExistingStudent?.parentId,
                           );
-                          if (mounted) {
+                          if (mounted &&
+                              (openMapAfterAssign ||
+                                  assignedStudent.pickupLatitude == null ||
+                                  assignedStudent.pickupLongitude == null)) {
                             await StudentLocationPickerScreen.open(
                               context,
-                              student: createdStudent,
-                              initialAddress: pickupAddress,
+                              student: assignedStudent,
+                              initialAddress: finalPickupAddress,
                             );
                           }
                           await _loadFleetData();
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Estudiante $studentName inscrito en ${selectedBus.code}'),
+                              content: Text('Estudiante ${assignedStudent.name} asignado a ${selectedBus.code}'),
                               backgroundColor: SmartColors.smartGreen,
                             ),
                           );
@@ -280,8 +620,8 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final displayBuses = _buses.isNotEmpty ? _buses : MockData.buses;
-    final displayPassengers = _passengers.isNotEmpty ? _passengers : MockData.passengers;
+    final displayBuses = _buses;
+    final displayPassengers = _passengers;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -505,6 +845,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                               ),
                             ),
                           ),
+                          /* [DESHABILITADO TEMPORALMENTE] Tarjeta de ingresos / pasarela de pago no contemplada aún.
                           const SizedBox(width: 14),
                           Expanded(
                             child: NeumorphicBox(
@@ -558,6 +899,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                               ),
                             ),
                           ),
+                          */
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -579,20 +921,21 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                             context,
                             targetRoute: '/owner_map',
                             title: 'MAPA DE FLOTA ESCOLAR',
-                            subtitle: 'Sincronizando telemetría y geocercas con la unidad TBX-492...',
+                            subtitle: 'Sincronizando telemetría GPS de tu flota en tiempo real...',
                             badge: 'RADAR DE FLOTA GPS',
                           );
                         },
                       ),
                       const SizedBox(height: 24),
 
-                      // Control de Cobros Neumórfico
+                      // Gestión de Cupos y Pasajeros (Control de cobros/pasarela comentado temporalmente)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
-                              'CONTROL DE CUOTAS Y MENSUALIDADES',
+                              'PASAJEROS Y ASIGNACIÓN DE CUPOS',
+                              // 'CONTROL DE CUOTAS Y MENSUALIDADES',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.jetBrainsMono(
@@ -632,7 +975,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         padding: const EdgeInsets.all(18),
                         child: Column(
                           children: displayPassengers.take(6).map((p) {
-                            final isPaid = p.paymentStatus == 'Al día';
+                            // final isPaid = p.paymentStatus == 'Al día';
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8.0),
                               child: Row(
@@ -660,6 +1003,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                                       ],
                                     ),
                                   ),
+                                  /* [DESHABILITADO TEMPORALMENTE] Chip interactivo de pasarela/estado de pago
                                   NeumorphicBox(
                                     isPill: true,
                                     isDark: isPaid,
@@ -679,6 +1023,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                                       ),
                                     ),
                                   ),
+                                  */
                                 ],
                               ),
                             );
@@ -720,8 +1065,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                         itemCount: displayBuses.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 14),
                         itemBuilder: (context, index) {
+                          final bus = displayBuses[index];
+                          final coveredSchools = BusService.extractCoveredSchools(
+                            _passengers.where((p) => p.busCode == bus.code),
+                            fallbackSchool: bus.schoolName,
+                          );
                           return _OwnerBusItemImproved(
-                            bus: displayBuses[index],
+                            bus: bus,
+                            coveredSchools: coveredSchools,
                             onUpdated: _loadFleetData,
                           );
                         },
@@ -742,13 +1093,25 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       NeumorphicBox(
                         borderRadius: 20,
                         padding: const EdgeInsets.all(18),
-                        child: Column(
-                          children: const [
-                            _HistoryRow(text: 'BUS-01 completó recorrido matutino Colegio San José'),
-                            SizedBox(height: 10),
-                            _HistoryRow(text: 'BUS-02 disponible en base para jornada de la tarde'),
-                          ],
-                        ),
+                        child: displayBuses.isEmpty
+                            ? Text(
+                                'Sin recorridos registrados todavía.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: SmartColors.smartGray,
+                                ),
+                              )
+                            : Column(
+                                children: [
+                                  for (int i = 0; i < displayBuses.length; i++) ...[
+                                    _HistoryRow(
+                                      text:
+                                          '${displayBuses[i].code} (${displayBuses[i].status}) • ${displayBuses[i].schoolName ?? 'Penonomé'} • Chofer: ${displayBuses[i].driverName}',
+                                    ),
+                                    if (i < displayBuses.length - 1) const SizedBox(height: 10),
+                                  ],
+                                ],
+                              ),
                       ),
                     ],
                   ),
@@ -782,9 +1145,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
 
 class _OwnerBusItemImproved extends StatefulWidget {
   final BusMock bus;
+  final List<String> coveredSchools;
   final VoidCallback? onUpdated;
 
-  const _OwnerBusItemImproved({required this.bus, this.onUpdated});
+  const _OwnerBusItemImproved({
+    required this.bus,
+    this.coveredSchools = const [],
+    this.onUpdated,
+  });
 
   @override
   State<_OwnerBusItemImproved> createState() => _OwnerBusItemImprovedState();
@@ -803,11 +1171,16 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
     final authService = context.read<AuthService>();
     final busService = context.read<BusService>();
     final drivers = await authService.getAvailableDrivers();
-    if (!mounted || drivers.isEmpty) return;
+    if (!mounted) return;
 
-    Map<String, dynamic> selectedDriver = drivers.first;
+    Map<String, dynamic>? selectedDriver = drivers.isNotEmpty ? drivers.first : null;
+    bool createNewMode = drivers.isEmpty;
+    bool isSubmitting = false;
+    final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController(text: '+507 6');
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -824,43 +1197,94 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                   letterSpacing: 1.0,
                 ),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Selecciona un conductor disponible para asignar a la unidad ${widget.bus.code}.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      color: SmartColors.deepPetrol,
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Selecciona un conductor registrado o crea uno nuevo para ${widget.bus.code}.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        color: SmartColors.deepPetrol,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedDriver['id']?.toString(),
-                    decoration: InputDecoration(
-                      labelText: 'Conductor disponible',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    items: drivers.map((d) {
-                      return DropdownMenuItem<String>(
-                        value: d['id']?.toString(),
-                        child: Text(d['nombre']?.toString() ?? 'Conductor'),
-                      );
-                    }).toList(),
-                    onChanged: (id) {
-                      if (id != null) {
-                        setDialogState(() {
-                          selectedDriver = drivers.firstWhere((d) => d['id']?.toString() == id);
-                        });
-                      }
-                    },
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    if (drivers.isNotEmpty)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Text('Existente'),
+                              selected: !createNewMode,
+                              onSelected: (_) => setDialogState(() => createNewMode = false),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Text('Nuevo chofer'),
+                              selected: createNewMode,
+                              onSelected: (_) => setDialogState(() => createNewMode = true),
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 14),
+                    if (!createNewMode && drivers.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedDriver?['id']?.toString(),
+                        decoration: InputDecoration(
+                          labelText: 'Conductor disponible',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: drivers.map((d) {
+                          return DropdownMenuItem<String>(
+                            value: d['id']?.toString(),
+                            child: Text(d['nombre']?.toString() ?? 'Conductor'),
+                          );
+                        }).toList(),
+                        onChanged: (id) {
+                          if (id != null) {
+                            setDialogState(() {
+                              selectedDriver = drivers.firstWhere((d) => d['id']?.toString() == id);
+                            });
+                          }
+                        },
+                      )
+                    else ...[
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Nombre completo del conductor',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Correo (ej: chofer3@smartroute.com)',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Teléfono',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(ctx),
+                  onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
                   child: Text(
                     'CANCELAR',
                     style: GoogleFonts.jetBrainsMono(
@@ -877,24 +1301,52 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: () async {
-                    final driverName = selectedDriver['nombre']?.toString() ?? 'Nuevo Conductor (Asignado)';
-                    final driverId = selectedDriver['id']?.toString();
-                    Navigator.pop(ctx);
-                    await busService.assignDriverToBus(
-                      busCode: widget.bus.code,
-                      driverName: driverName,
-                      driverId: driverId,
-                    );
-                    if (mounted) {
-                      setState(() {
-                        currentDriver = driverName;
-                      });
-                      widget.onUpdated?.call();
-                    }
-                  },
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            Map<String, dynamic>? targetDriver = selectedDriver;
+                            if (createNewMode) {
+                              targetDriver = await authService.registerDriverProfile(
+                                nombre: nameCtrl.text.trim(),
+                                email: emailCtrl.text.trim(),
+                                telefono: phoneCtrl.text.trim(),
+                              );
+                            }
+                            if (targetDriver == null) {
+                              setDialogState(() => isSubmitting = false);
+                              return;
+                            }
+                            final driverName =
+                                targetDriver['nombre']?.toString() ?? 'Conductor Asignado';
+                            final driverId = targetDriver['id']?.toString();
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            await busService.assignDriverToBus(
+                              busCode: widget.bus.code,
+                              driverName: driverName,
+                              driverId: driverId,
+                            );
+                            if (mounted) {
+                              setState(() {
+                                currentDriver = driverName;
+                              });
+                              widget.onUpdated?.call();
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSubmitting = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error asignando conductor: $e'),
+                                  backgroundColor: SmartColors.smartRed,
+                                ),
+                              );
+                            }
+                          }
+                        },
                   child: Text(
-                    'CONFIRMAR',
+                    isSubmitting ? 'GUARDANDO...' : 'CONFIRMAR',
                     style: GoogleFonts.jetBrainsMono(
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.8,
@@ -976,13 +1428,9 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                     onChanged: (v) => editedCapacity = v,
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
+                  SchoolSelectorField(
+                    label: 'Colegio Asignado',
                     initialValue: editedSchool,
-                    decoration: InputDecoration(
-                      labelText: 'Colegio Asignado',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    validator: (v) => Validators.validateRequired(v, fieldName: 'El colegio'),
                     onChanged: (v) => editedSchool = v,
                   ),
                 ],
@@ -1123,8 +1571,10 @@ class _OwnerBusItemImprovedState extends State<_OwnerBusItemImproved> {
                         ),
                         Expanded(
                           child: _OwnerDetailCol(
-                            label: 'COLEGIO',
-                            value: widget.bus.schoolName ?? 'No asignado',
+                            label: 'COLEGIOS',
+                            value: widget.coveredSchools.isEmpty
+                                ? 'Múltiples colegios'
+                                : widget.coveredSchools.join(' • '),
                           ),
                         ),
                       ],

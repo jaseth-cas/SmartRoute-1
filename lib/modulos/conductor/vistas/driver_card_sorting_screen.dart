@@ -1,7 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 
@@ -52,86 +60,104 @@ class DriverCardSortingScreen extends StatefulWidget {
 
 class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
   // Lista de estudiantes que asisten hoy para reordenar
-  late List<StudentStopCardItem> _attendingStudents;
+  List<StudentStopCardItem> _attendingStudents = [];
   // Estudiantes ausentes (omitidos automáticamente)
-  late List<StudentStopCardItem> _absentStudents;
+  List<StudentStopCardItem> _absentStudents = [];
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+  RealtimeChannel? _studentsRealtimeChannel;
+  StudentService? _studentService;
 
   @override
   void initState() {
     super.initState();
-    _initializeStudentCards();
-  }
-
-  void _initializeStudentCards() {
-    // Alumnos que asisten hoy en Penonomé
-    _attendingStudents = [
-      StudentStopCardItem(
-        id: 1,
-        name: 'Mateo Gómez',
-        pickupAddress: 'Casa (Vía hacia Sonadora, Penonomé)',
-        schoolName: 'Colegio San José',
-        grade: '4° Primaria • Salón A',
-        position: const LatLng(8.5281, -80.3565),
-        distanceMeters: 620,
-        estimatedTime: '07:05 AM',
-        photoAsset: null,
-      ),
-      StudentStopCardItem(
-        id: 2,
-        name: 'Sofía Martínez',
-        pickupAddress: 'Casa (Conjunto El Roble, Calle 4)',
-        schoolName: 'Colegio San José',
-        grade: '5° Primaria • Salón B',
-        position: const LatLng(8.5242, -80.3522),
-        distanceMeters: 940,
-        estimatedTime: '07:12 AM',
-        photoAsset: null,
-      ),
-      StudentStopCardItem(
-        id: 3,
-        name: 'Lucas Rodríguez',
-        pickupAddress: 'Casa (Av. 19 # 104-50, Penonomé)',
-        schoolName: 'Colegio San José',
-        grade: '3° Primaria • Salón C',
-        position: const LatLng(8.5215, -80.3532),
-        distanceMeters: 1420,
-        estimatedTime: '07:18 AM',
-        photoAsset: null,
-      ),
-      StudentStopCardItem(
-        id: 5,
-        name: 'Eliam Fernández',
-        pickupAddress: 'Casa (Vía Cristo Rey, Penonomé)',
-        schoolName: 'Colegio San José',
-        grade: '6° Primaria • Salón A',
-        position: const LatLng(8.5186, -80.3541),
-        distanceMeters: 1880,
-        estimatedTime: '07:24 AM',
-        photoAsset: 'assets/images/eliam_student.png',
-      ),
-    ];
-
-    // Alumnos que notificaron ausencia
-    _absentStudents = [
-      StudentStopCardItem(
-        id: 4,
-        name: 'Valentina Castro',
-        pickupAddress: 'Calle 72 # 9-15 (Torres del Parque)',
-        schoolName: 'Colegio San José',
-        grade: '4° Primaria',
-        position: const LatLng(8.5170, -80.3545),
-        distanceMeters: 2150,
-        estimatedTime: 'Omitida',
-        isAbsent: true,
-      ),
-    ];
-  }
-
-  void _onReorder(int oldIndex, int newIndex) {
-    setState(() {
-      if (newIndex > oldIndex) {
-        newIndex -= 1;
+    _locationSub = StudentService.locationUpdatesStream.listen((_) {
+      if (mounted) {
+        _initializeStudentCards();
       }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeStudentCards();
+      final studentService = context.read<StudentService>();
+      _studentService = studentService;
+      _studentsRealtimeChannel = studentService.subscribeToStudentChanges(
+        channelName: 'driver_cards_estudiantes_${DateTime.now().millisecondsSinceEpoch}',
+        onChanged: () {
+          if (mounted) {
+            _initializeStudentCards();
+          }
+        },
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _locationSub?.cancel();
+    _studentService?.unsubscribeChannel(_studentsRealtimeChannel);
+    super.dispose();
+  }
+
+  Future<void> _initializeStudentCards() async {
+    try {
+      final session = context.read<SessionManager>().currentSession;
+      final busService = context.read<BusService>();
+      final studentService = context.read<StudentService>();
+
+      BusMock? bus;
+      if (session != null && session.userId.isNotEmpty) {
+        bus = await busService.getBusByDriver(session.userId);
+      }
+      final students = bus != null
+          ? await studentService.getStudentsByBus(bus.code)
+          : await studentService.getAllStudents();
+
+      final origin = (bus?.latitude != null && bus?.longitude != null)
+          ? LatLng(bus!.latitude!, bus.longitude!)
+          : AppConstants.penonomeCenter;
+
+      final attending = <StudentStopCardItem>[];
+      final absent = <StudentStopCardItem>[];
+
+      for (final s in students) {
+        final pos = (s.pickupLatitude != null && s.pickupLongitude != null)
+            ? LatLng(s.pickupLatitude!, s.pickupLongitude!)
+            : AppConstants.penonomeCenter;
+        final dist = const Distance().as(LengthUnit.Meter, origin, pos);
+        final etaMinute = (5 + (s.order * 6)).toString().padLeft(2, '0');
+
+        final card = StudentStopCardItem(
+          id: s.id,
+          name: s.name,
+          pickupAddress: s.pickupAddress,
+          schoolName: s.schoolName,
+          grade: '${s.busCode} • Parada #${s.order}',
+          position: pos,
+          distanceMeters: dist > 0 ? dist : (s.order * 500.0),
+          estimatedTime: s.status == PassengerStatus.absent ? 'Omitida' : '07:$etaMinute AM',
+          photoAsset: s.photoAsset,
+          isAbsent: s.status == PassengerStatus.absent,
+        );
+
+        if (card.isAbsent) {
+          absent.add(card);
+        } else {
+          attending.add(card);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _attendingStudents = attending;
+          _absentStudents = absent;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando tarjetas en DriverCardSortingScreen: $e');
+    }
+  }
+
+  void _onReorderItem(int oldIndex, int newIndex) {
+    setState(() {
       final item = _attendingStudents.removeAt(oldIndex);
       _attendingStudents.insert(newIndex, item);
     });
@@ -315,12 +341,13 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                       buildDefaultDragHandles: false,
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                       itemCount: _attendingStudents.length + (_absentStudents.isNotEmpty ? 1 : 0),
-                      onReorder: (oldIndex, newIndex) {
+                      onReorderItem: (oldIndex, newIndex) {
                         // Impedir mover la sección de ausentes
-                        if (oldIndex >= _attendingStudents.length || newIndex > _attendingStudents.length) {
+                        if (oldIndex >= _attendingStudents.length ||
+                            newIndex >= _attendingStudents.length) {
                           return;
                         }
-                        _onReorder(oldIndex, newIndex);
+                        _onReorderItem(oldIndex, newIndex);
                       },
                       itemBuilder: (context, index) {
                         // Sección de ausencias al final
@@ -394,15 +421,29 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          'Destino: Colegio San José (07:30 AM)',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: SmartColors.smartGray,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Builder(
+                          builder: (_) {
+                            final schools = _attendingStudents
+                                .map((s) => s.schoolName.trim())
+                                .where((c) => c.isNotEmpty)
+                                .toSet()
+                                .toList();
+                            final destLabel = schools.isEmpty
+                                ? 'Destino escolar en Penonomé'
+                                : schools.length == 1
+                                    ? 'Destino: ${schools.first}'
+                                    : 'Destinos (${schools.length}): ${schools.join(' • ')}';
+                            return Text(
+                              destLabel,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: SmartColors.smartGray,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -508,7 +549,7 @@ class _DriverCardSortingScreenState extends State<DriverCardSortingScreen> {
                     ? Image.asset(
                         student.photoAsset!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildAvatarFallback(student.name),
+                        errorBuilder: (_, _, _) => _buildAvatarFallback(student.name),
                       )
                     : _buildAvatarFallback(student.name),
               ),

@@ -4,6 +4,21 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+/// Resultado de la optimización de secuencia de paradas con el algoritmo de Dijkstra.
+class DijkstraOptimizationResult {
+  final List<int> orderedIndices;
+  final List<double> legDistancesMeters;
+  final double finalLegToDestinationMeters;
+  final double totalDistanceMeters;
+
+  const DijkstraOptimizationResult({
+    required this.orderedIndices,
+    required this.legDistancesMeters,
+    required this.finalLegToDestinationMeters,
+    required this.totalDistanceMeters,
+  });
+}
+
 /// Información detallada sobre el punto de acceso vehicular más cercano sobre una calle transitable.
 class OsrmNearestStreetInfo {
   final LatLng snappedPoint;
@@ -129,6 +144,106 @@ class OsrmRoutingService {
     final dy = (p2.latitude - p1.latitude) * 111320.0;
     final dx = (p2.longitude - p1.longitude) * 111320.0 * math.cos(latAvg);
     return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// Ejecuta el algoritmo de Dijkstra sobre el grafo ponderado G(V, E) formado por:
+  /// - V = {origin} U {stopPoints} U {destination}
+  /// - w(u, v) = distancia geodésica en metros entre u y v
+  ///
+  /// En cada iteración calcula las distancias mínimas `d(v) = min(d(v), d(u) + w(u, v))`
+  /// desde el nodo actual y selecciona la siguiente parada activa no visitada de menor costo.
+  static DijkstraOptimizationResult optimizeStopsWithDijkstra({
+    required LatLng origin,
+    required List<LatLng> stopPoints,
+    required LatLng destination,
+  }) {
+    if (stopPoints.isEmpty) {
+      final directMeters = calculateDistanceMeters(origin, destination);
+      return DijkstraOptimizationResult(
+        orderedIndices: const [],
+        legDistancesMeters: const [],
+        finalLegToDestinationMeters: directMeters,
+        totalDistanceMeters: directMeters,
+      );
+    }
+
+    // Construir matriz de adyacencia completa del grafo G(V, E)
+    // Índice 0 = origin, 1..n = stopPoints, n+1 = destination
+    final n = stopPoints.length;
+    final nodes = <LatLng>[origin, ...stopPoints, destination];
+    final totalNodes = nodes.length;
+    final adj = List.generate(
+      totalNodes,
+      (i) => List<double>.generate(
+        totalNodes,
+        (j) => i == j ? 0.0 : calculateDistanceMeters(nodes[i], nodes[j]),
+      ),
+    );
+
+    final visitedStops = List<bool>.filled(n, false);
+    final orderedIndices = <int>[];
+    final legDistances = <double>[];
+    var currentNode = 0; // Inicia en origin
+    var totalDistance = 0.0;
+
+    for (int step = 0; step < n; step++) {
+      // Relajación de Dijkstra desde currentNode sobre los nodos no visitados
+      final dist = List<double>.filled(totalNodes, double.infinity);
+      final settled = List<bool>.filled(totalNodes, false);
+      dist[currentNode] = 0.0;
+
+      for (int count = 0; count < totalNodes; count++) {
+        int u = -1;
+        double minDist = double.infinity;
+        for (int v = 0; v < totalNodes; v++) {
+          if (!settled[v] && dist[v] < minDist) {
+            minDist = dist[v];
+            u = v;
+          }
+        }
+        if (u == -1 || minDist == double.infinity) break;
+        settled[u] = true;
+
+        for (int v = 0; v < totalNodes; v++) {
+          if (!settled[v]) {
+            final candidate = dist[u] + adj[u][v];
+            if (candidate < dist[v]) {
+              dist[v] = candidate;
+            }
+          }
+        }
+      }
+
+      // Seleccionar la parada activa (1..n) no visitada con menor costo d(v)
+      int bestStopIdx = -1;
+      double bestCost = double.infinity;
+      for (int s = 0; s < n; s++) {
+        if (!visitedStops[s]) {
+          final cost = dist[s + 1];
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestStopIdx = s;
+          }
+        }
+      }
+
+      if (bestStopIdx == -1) break;
+      visitedStops[bestStopIdx] = true;
+      orderedIndices.add(bestStopIdx);
+      legDistances.add(bestCost);
+      totalDistance += bestCost;
+      currentNode = bestStopIdx + 1;
+    }
+
+    final finalLeg = adj[currentNode][totalNodes - 1];
+    totalDistance += finalLeg;
+
+    return DijkstraOptimizationResult(
+      orderedIndices: orderedIndices,
+      legDistancesMeters: legDistances,
+      finalLegToDestinationMeters: finalLeg,
+      totalDistanceMeters: totalDistance,
+    );
   }
 
   List<LatLng> _buildFallbackInterpolatedRoute(List<LatLng> waypoints) {

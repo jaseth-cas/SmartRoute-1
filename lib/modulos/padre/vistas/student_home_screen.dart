@@ -5,17 +5,18 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/section_title.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/info_banner.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/trust_safety_dialog.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
 import 'package:smartroute_flutter/nucleo/widgets/user_options_bar.dart';
@@ -29,16 +30,27 @@ class StudentHomeScreen extends StatefulWidget {
 }
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
-  StudentPassengerMock? _student = MockData.getPrimaryStudent();
-  BusMock? _bus = MockData.getBusByCode('BUS-01');
-  bool _isLoading = false;
+  StudentPassengerMock? _student;
+  BusMock? _bus;
+  RouteMock? _route;
+  StopMock? _primaryStop;
+  bool _isLoading = true;
   StreamSubscription? _attendanceSub;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
 
   @override
   void initState() {
     super.initState();
+    _locationSub = StudentService.locationUpdatesStream.listen((updated) {
+      if (!mounted) return;
+      if (_student == null || _student!.id == updated.id) {
+        setState(() {
+          _student = updated;
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadStudentData(silent: true);
+      _loadStudentData(silent: false);
       _setupRealtimeSubscription();
     });
   }
@@ -46,46 +58,55 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   @override
   void dispose() {
     _attendanceSub?.cancel();
+    _locationSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadStudentData({bool silent = false}) async {
-    if (!silent && mounted) {
+    if (!silent && _student == null && mounted) {
       setState(() => _isLoading = true);
     }
 
     try {
       final studentService = context.read<StudentService>();
       final busService = context.read<BusService>();
-      final sessionManager = context.read<SessionManager>();
-      final session = sessionManager.currentSession;
+      final session = context.read<SessionManager>().currentSession;
+      final userId = SupabaseConfig.client.auth.currentUser?.id ?? session?.userId;
 
-      // Consultar estudiantes y autobús en paralelo (Stale-While-Revalidate + Future.wait)
-      final results = await Future.wait([
-        studentService.getStudentsByBus('BUS-01'),
-        busService.getBusByCode('BUS-01'),
-      ]);
-
-      final students = results[0] as List<StudentPassengerMock>;
-      final fetchedBus = results[1] as BusMock?;
-
-      StudentPassengerMock? matchedStudent;
-      if (session != null && session.userId.isNotEmpty) {
-        matchedStudent = students.cast<StudentPassengerMock?>().firstWhere(
-              (s) => s != null && (s.parentName.toLowerCase().contains(session.name.toLowerCase()) ||
-                  session.name.toLowerCase().contains(s.parentName.toLowerCase())),
-              orElse: () => null,
-            );
+      final student = await studentService.getPrimaryStudent(userId);
+      if (student == null) {
+        if (mounted) {
+          setState(() {
+            _student = null;
+            _bus = null;
+            _route = null;
+            _primaryStop = null;
+            _isLoading = false;
+          });
+        }
+        return;
       }
 
-      final student = matchedStudent ?? (students.isNotEmpty ? students.first : MockData.getPrimaryStudent());
-      final bus = (student.busCode == 'BUS-01' ? fetchedBus : await busService.getBusByCode(student.busCode)) ??
-          MockData.getBusByCode(student.busCode);
+      final details = await Future.wait([
+        busService.getBusByCode(student.busCode),
+        busService.getRouteByCode(student.busCode),
+        busService.getStopsByBusCode(student.busCode),
+      ]);
+
+      final fetchedBus = details[0] as BusMock?;
+      final fetchedRoute = details[1] as RouteMock?;
+      final busStops = details[2] as List<StopMock>;
+      final matchedStop = busStops
+              .where((s) => s.stopCode == 'EST-${student.id}')
+              .firstOrNull ??
+          busStops.firstOrNull;
 
       if (mounted) {
         setState(() {
           _student = student;
-          _bus = bus;
+          _bus = fetchedBus;
+          _route = fetchedRoute;
+          _primaryStop = matchedStop;
           _isLoading = false;
         });
       }
@@ -93,7 +114,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       debugPrint('Error cargando datos del estudiante: $e');
       if (mounted) {
         setState(() {
-          _student ??= MockData.getPrimaryStudent();
           _isLoading = false;
         });
       }
@@ -111,8 +131,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
   Future<void> _toggleAbsence(StudentPassengerMock student) async {
     final bool willBeAbsent = student.status != PassengerStatus.absent;
-    MockData.reportAbsence(student.id, willBeAbsent);
-    setState(() {});
+    setState(() {
+      _student = student.copyWith(
+        status: willBeAbsent ? PassengerStatus.absent : PassengerStatus.waiting,
+      );
+    });
     try {
       final attendanceService = context.read<AttendanceService>();
       await attendanceService.reportAbsence(
@@ -125,17 +148,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final defaultRoute = MockData.getDefaultStudentRoute();
-    final defaultStop = MockData.getDefaultStudentStop();
-    final student = _student ?? MockData.getPrimaryStudent();
-    final isAbsent = student.status == PassengerStatus.absent;
-    final isOnboard = student.status == PassengerStatus.onboard;
-    final isDelivered = student.status == PassengerStatus.delivered;
+    final defaultRoute = _route;
+    final defaultStop = _primaryStop;
+    final student = _student;
+    final isAbsent = student?.status == PassengerStatus.absent;
+    final isOnboard = student?.status == PassengerStatus.onboard;
+    final isDelivered = student?.status == PassengerStatus.delivered;
 
     return PopScope(
       canPop: false,
@@ -175,7 +197,41 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
         body: _isLoading
             ? const Center(child: CircularProgressIndicator(color: SmartColors.deepBlue))
-            : ResponsiveContent.wide(
+            : student == null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const EmptyState(
+                            message: 'Sin estudiante vinculado',
+                            subMessage:
+                                'Configura el perfil de tu hijo(a) y su domicilio de recogida para activar el rastreo escolar.',
+                            icon: Icons.child_care_rounded,
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => context.push('/edit_profile'),
+                            icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                            label: const Text('CONFIGURAR PERFIL Y DOMICILIO'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: SmartColors.deepBlue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ResponsiveContent.wide(
           maxWidth: 1080,
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
           child: SingleChildScrollView(
@@ -203,7 +259,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'TUTOR // ${session?.name.toUpperCase() ?? "CARLOS GÓMEZ"}',
+                              'TUTOR // ${(session?.name ?? student.parentName).toUpperCase()}',
                               style: GoogleFonts.jetBrainsMono(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -427,7 +483,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   style: GoogleFonts.plusJakartaSans(fontSize: 12.5, color: SmartColors.smartGray),
                                 ),
                                 Text(
-                                  '\$${student.monthlyFee.toInt()} COP',
+                                  '\$${student.monthlyFee.toInt()}',
                                   style: GoogleFonts.jetBrainsMono(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
@@ -473,15 +529,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          if (defaultRoute != null && defaultStop != null) {
-                            TransitLoadingScreen.open(
-                              context,
-                              targetRoute: '/map/${defaultRoute.code}/${defaultStop.stopCode}',
-                              title: 'RASTREO SATELITAL EN VIVO',
-                              subtitle: 'Sincronizando satélites GPS con la unidad Toyota HiAce TBX-492...',
-                              badge: 'OPENSTREETMAP GPS',
-                            );
-                          }
+                          final busCode = student.busCode;
+                          final stopCode = defaultStop?.stopCode ?? 'EST-${student.id}';
+                          TransitLoadingScreen.open(
+                            context,
+                            targetRoute: '/map/$busCode/$stopCode',
+                            title: 'RASTREO SATELITAL EN VIVO',
+                            subtitle:
+                                'Sincronizando satélites GPS con ${_bus?.model ?? 'la unidad'} (${_bus?.plate ?? busCode})...',
+                            badge: 'OPENSTREETMAP GPS',
+                          );
                         },
                         child: NeumorphicBox(
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),

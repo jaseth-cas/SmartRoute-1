@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
@@ -27,19 +30,47 @@ class EtaScreen extends StatefulWidget {
 
 class _EtaScreenState extends State<EtaScreen> {
   int? _calculatedEta;
+  RouteMock? _route;
+  StopMock? _stop;
+  BusMock? _bus;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTelemetry();
+  }
+
+  Future<void> _loadTelemetry() async {
+    try {
+      final busService = context.read<BusService>();
+      final results = await Future.wait([
+        busService.getRouteByCode(widget.routeCode),
+        busService.getStopByCode(widget.stopCode),
+        busService.getBusByCode(widget.routeCode),
+      ]);
+      if (mounted) {
+        setState(() {
+          _route = results[0] as RouteMock?;
+          _stop = results[1] as StopMock?;
+          _bus = results[2] as BusMock?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando telemetría ETA: $e');
+    }
+  }
 
   void _recalculateEta() {
-    final route = MockData.getRouteByCode(widget.routeCode);
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    final bus = MockData.getBusByCode(route?.busCode ?? 'BUS-01');
+    final stop = _stop;
+    final bus = _bus;
 
     final distanceKm = (stop != null && stop.distanceFromStartKm > 0)
         ? stop.distanceFromStartKm
-        : (widget.routeCode == 'R-BU' ? 1.2 : 2.5);
+        : 2.5;
     final speedKmH = (bus != null && bus.currentSpeedKmH > 0) ? bus.currentSpeedKmH : 32;
 
     setState(() {
-      _calculatedEta = MockData.calculateEtaMinutes(
+      _calculatedEta = AppConstants.calculateEtaMinutes(
         distanceKm: distanceKm,
         speedKmH: speedKmH,
       );
@@ -56,12 +87,12 @@ class _EtaScreenState extends State<EtaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final route = MockData.getRouteByCode(widget.routeCode);
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    final bus = MockData.getBusByCode(route?.busCode ?? "");
+    final route = _route;
+    final stop = _stop;
+    final bus = _bus;
     final distanceKm = (stop != null && stop.distanceFromStartKm > 0)
         ? stop.distanceFromStartKm
-        : (widget.routeCode == "R-BU" ? 1.2 : 2.5);
+        : 2.5;
     final etaValue = _calculatedEta ?? route?.etaMinutes ?? 5;
 
     return PopScope(
@@ -215,7 +246,7 @@ class _EtaScreenState extends State<EtaScreen> {
                       _DetailInfoRow(
                         icon: Icons.pin_drop_rounded,
                         label: 'PUNTO DE PARADA',
-                        value: stop?.name ?? 'Colegio San José',
+                        value: stop?.name ?? 'Parada escolar',
                       ),
                       const Divider(height: 20),
                       _DetailInfoRow(
@@ -228,7 +259,7 @@ class _EtaScreenState extends State<EtaScreen> {
                       _DetailInfoRow(
                         icon: Icons.directions_bus_rounded,
                         label: 'UNIDAD ASIGNADA',
-                        value: bus?.code ?? 'BUS-01 (TBX-492)',
+                        value: bus != null ? '${bus.code} (${bus.plate})' : 'Sin unidad asignada',
                         isMono: true,
                       ),
                     ],

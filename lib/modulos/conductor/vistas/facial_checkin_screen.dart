@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/servicios/camera_web_service.dart';
@@ -51,7 +53,7 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
 
   bool _cameraPermissionDenied = false;
   final RealCameraManager _cameraManager = RealCameraManager();
-  late StudentPassengerMock _targetStudent;
+  StudentPassengerMock? _targetStudent;
 
   // Animaciones del HUD táctico
   late AnimationController _laserController;
@@ -82,12 +84,7 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
   @override
   void initState() {
     super.initState();
-
-    // Estudiante objetivo: Eliam Fernandez
-    _targetStudent = MockData.passengers.firstWhere(
-      (p) => p.name.toLowerCase().contains('eliam'),
-      orElse: () => MockData.passengers.first,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTargetStudent());
 
     // Animación del láser vertical de escaneo
     _laserController = AnimationController(
@@ -118,6 +115,25 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
+  }
+
+  Future<void> _loadTargetStudent() async {
+    try {
+      final studentService = context.read<StudentService>();
+      StudentPassengerMock? loaded;
+      if (widget.studentId != null) {
+        loaded = await studentService.getStudentById(widget.studentId!);
+      } else {
+        final all = await studentService.getAllStudents();
+        loaded = all
+            .where((s) => s.status == PassengerStatus.waiting)
+            .firstOrNull ??
+            all.firstOrNull;
+      }
+      if (mounted && loaded != null) {
+        setState(() => _targetStudent = loaded);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -253,13 +269,19 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
         if (_faceStabilityScore >= 98.0 && _matchingConfidence >= 0.98 && _consecutiveFaceFrames >= 16 && !_matchConfirmed) {
           _matchConfirmed = true;
           _scanSubStep = 5;
-          _statusMessage = 'IDENTIDAD CONFIRMADA: ${_targetStudent.name.toUpperCase()} (MATCH 99.4%)';
+          final target = _targetStudent;
+          _statusMessage =
+              'IDENTIDAD CONFIRMADA: ${(target?.name ?? 'ESTUDIANTE').toUpperCase()} (MATCH 99.4%)';
           _liveFaceDetectionTimer?.cancel();
 
-          MockData.checkInPassenger(
-            _targetStudent.id,
-            method: 'Biometría Facial AI // ResNet-512 Real-Time Vision',
-          );
+          if (target != null) {
+            unawaited(
+              context.read<AttendanceService>().checkInPassenger(
+                    studentId: target.id,
+                    method: 'Biometría Facial AI // ResNet-512 Real-Time Vision',
+                  ),
+            );
+          }
 
           Timer(const Duration(milliseconds: 1200), () {
             if (mounted) {
@@ -953,7 +975,7 @@ class _FacialCheckinScreenState extends State<FacialCheckinScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _targetStudent.name,
+                                _targetStudent?.name ?? 'Estudiante Verificado',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,

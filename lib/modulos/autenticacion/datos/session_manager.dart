@@ -34,9 +34,9 @@ class FakeJwtProvider {
       case UserRole.student:
         return JwtSession(
           token: "fake.jwt.student.token",
-          userId: "1",
-          name: customName ?? "Carlos Gómez (Tutor)",
-          email: "carlos.gomez@smartroute.com",
+          userId: "c0000000-0000-0000-0000-000000000003",
+          name: customName ?? "Padre de Familia",
+          email: "padre1@smartroute.com",
           role: UserRole.student,
           issuedAt: issuedAt,
           expiresAt: expiresAt,
@@ -44,9 +44,9 @@ class FakeJwtProvider {
       case UserRole.driver:
         return JwtSession(
           token: "fake.jwt.driver.token",
-          userId: "3",
-          name: customName ?? "Juan Pérez",
-          email: "juan.conductor@smartroute.com",
+          userId: "b0000000-0000-0000-0000-000000000002",
+          name: customName ?? "Conductor Principal",
+          email: "conductor@smartroute.com",
           role: UserRole.driver,
           issuedAt: issuedAt,
           expiresAt: expiresAt,
@@ -54,9 +54,9 @@ class FakeJwtProvider {
       case UserRole.owner:
         return JwtSession(
           token: "fake.jwt.owner.token",
-          userId: "4",
-          name: customName ?? "Transportes Gómez (Escolar)",
-          email: "transportes.gomez@smartroute.com",
+          userId: "a0000000-0000-0000-0000-000000000001",
+          name: customName ?? "Transportista Penonomé",
+          email: "dueno@smartroute.com",
           role: UserRole.owner,
           issuedAt: issuedAt,
           expiresAt: expiresAt,

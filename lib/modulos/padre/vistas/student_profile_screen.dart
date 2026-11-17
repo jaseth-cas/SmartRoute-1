@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/coordinate_parser.dart';
 import 'package:latlong2/latlong.dart';
@@ -23,11 +26,51 @@ class StudentProfileScreen extends StatefulWidget {
 }
 
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
+  StudentPassengerMock? _student;
+  bool _isLoading = true;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _locationSub = StudentService.locationUpdatesStream.listen((updated) {
+      if (!mounted) return;
+      if (_student == null || updated.id == _student!.id) {
+        setState(() => _student = updated);
+      }
+    });
+    _loadStudent();
+  }
+
+  @override
+  void dispose() {
+    _locationSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadStudent() async {
+    try {
+      final session = context.read<SessionManager>().currentSession;
+      final studentService = context.read<StudentService>();
+      final userId = SupabaseConfig.client.auth.currentUser?.id ?? session?.userId;
+      final student = await studentService.getPrimaryStudent(userId);
+      if (mounted) {
+        setState(() {
+          _student = student;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando StudentProfileScreen: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final student = MockData.getPrimaryStudent();
+    final student = _student;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -70,7 +113,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                 icon: const Icon(Icons.edit_outlined, color: SmartColors.deepBlue, size: 18),
                 onPressed: () async {
                   await context.push('/edit_profile');
-                  if (mounted) setState(() {});
+                  await _loadStudent();
                 },
               ),
             ),
@@ -96,7 +139,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               ),
               const SizedBox(height: 18),
               Text(
-                session?.name ?? student.parentName,
+                session?.name ?? student?.parentName ?? 'Tutor SmartRoute',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
@@ -106,12 +149,16 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                session?.email ?? 'carlos.gomez@smartroute.com',
+                session?.email ?? 'Sin correo registrado',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   color: SmartColors.smartGray,
                 ),
               ),
+              if (_isLoading) ...[
+                const SizedBox(height: 12),
+                const LinearProgressIndicator(minHeight: 2),
+              ],
               const SizedBox(height: 24),
 
               // Tarjeta de Datos de Usuario
@@ -130,21 +177,24 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     _ProfileInfoItem(
                       icon: Icons.child_care_rounded,
                       label: 'ESTUDIANTE REPRESENTADO',
-                      value: student.name,
+                      value: student?.name ?? 'Sin estudiante vinculado (toca Editar)',
                     ),
                     const Divider(height: 20),
                     _ProfileInfoItem(
                       icon: Icons.home_outlined,
                       label: 'DIRECCIÓN DE RECOGIDA',
-                      value: student.pickupAddress,
+                      value: (student?.pickupAddress.isNotEmpty ?? false)
+                          ? student!.pickupAddress
+                          : 'Sin configurar',
                     ),
                     const Divider(height: 20),
                     _ProfileInfoItem(
                       icon: Icons.gps_fixed_rounded,
                       label: 'COORDENADAS GPS DE RECOGIDA',
-                      value: student.pickupLatitude != null && student.pickupLongitude != null
+                      value: student?.pickupLatitude != null &&
+                              student?.pickupLongitude != null
                           ? CoordinateParser.formatDd(
-                              LatLng(student.pickupLatitude!, student.pickupLongitude!),
+                              LatLng(student!.pickupLatitude!, student.pickupLongitude!),
                             )
                           : 'Sin configurar',
                       isMono: true,
@@ -153,21 +203,23 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     _ProfileInfoItem(
                       icon: Icons.phone_outlined,
                       label: 'TELÉFONO DE EMERGENCIA',
-                      value: student.parentPhone,
+                      value: (student?.parentPhone.isNotEmpty ?? false)
+                          ? student!.parentPhone
+                          : 'Sin configurar',
                       isMono: true,
                     ),
                     const Divider(height: 20),
                     _ProfileInfoItem(
                       icon: Icons.directions_bus_outlined,
                       label: 'UNIDAD ESCOLAR ASIGNADA',
-                      value: student.busCode,
+                      value: student?.busCode ?? 'Sin asignar',
                       isMono: true,
                     ),
                     const Divider(height: 20),
                     _ProfileInfoItem(
                       icon: Icons.school_outlined,
                       label: 'COLEGIO DE DESTINO',
-                      value: student.schoolName,
+                      value: student?.schoolName ?? 'Sin asignar',
                     ),
                   ],
                 ),
@@ -178,7 +230,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               const SizedBox(height: 20),
 
               PrimaryButton(
-                text: 'UBICAR DOMICILIO EN MAPA (GPS / COORDENADAS)',
+                text: 'UBICAR DOMICILIO EN MAPA',
                 icon: Icons.edit_location_alt_rounded,
                 isCyan: true,
                 onPressed: () async {
@@ -186,7 +238,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     context,
                     student: student,
                   );
-                  if (mounted) setState(() {});
+                  await _loadStudent();
                 },
               ),
               const SizedBox(height: 14),

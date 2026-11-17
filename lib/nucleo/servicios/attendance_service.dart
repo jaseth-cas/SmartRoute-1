@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
@@ -40,6 +39,31 @@ class AttendanceService {
     };
   }
 
+  Future<Map<String, String>> _fetchStudentNotificationMeta(int studentId) async {
+    try {
+      final row = await _supabase
+          .from('estudiantes_pasajeros')
+          .select('nombre, autobus_codigo, colegio')
+          .eq('id', studentId)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 3));
+      if (row != null) {
+        return {
+          'name': row['nombre']?.toString() ?? 'Estudiante #$studentId',
+          'busCode': row['autobus_codigo']?.toString() ?? 'BUS-01',
+          'schoolName': row['colegio']?.toString() ?? 'el colegio',
+        };
+      }
+    } catch (e) {
+      debugPrint('Aviso obteniendo metadatos de estudiante($studentId): $e');
+    }
+    return {
+      'name': 'Estudiante #$studentId',
+      'busCode': 'BUS-01',
+      'schoolName': 'el colegio',
+    };
+  }
+
   /// Registra el abordaje del estudiante en el autobús (Biometría Facial AI o Contingencia Manual)
   /// y envía notificación push inmediata de Prueba de Vida al padre (RF-09, RF-10, RF-15).
   Future<void> checkInPassenger({
@@ -48,11 +72,6 @@ class AttendanceService {
     String jornada = 'manana',
   }) async {
     final timeStr = _formatCurrentTime();
-    MockData.checkInPassenger(studentId, method: method);
-
-    final student = MockData.passengers.where((p) => p.id == studentId).firstOrNull;
-    final studentName = student?.name ?? 'Estudiante #$studentId';
-    final busCode = student?.busCode ?? 'BUS-01';
 
     try {
       await _supabase.from('asistencia_diaria').upsert(
@@ -65,7 +84,11 @@ class AttendanceService {
           'metodo_abordaje': method,
         },
         onConflict: 'estudiante_id,fecha,jornada',
-      );
+      ).timeout(const Duration(seconds: 4));
+
+      final meta = await _fetchStudentNotificationMeta(studentId);
+      final studentName = meta['name']!;
+      final busCode = meta['busCode']!;
 
       // RF-15: Disparar notificación push inmediata de confirmación de abordaje
       await _supabase.from('notificaciones').insert({
@@ -74,7 +97,7 @@ class AttendanceService {
         'mensaje': '$studentName abordó el autobús $busCode de forma segura a las $timeStr.',
         'tipo': 'system',
         'leida': false,
-      });
+      }).timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Error en checkInPassenger: $e');
       rethrow;
@@ -88,12 +111,6 @@ class AttendanceService {
     String jornada = 'manana',
   }) async {
     final timeStr = _formatCurrentTime();
-    MockData.checkOutPassenger(studentId);
-
-    final student = MockData.passengers.where((p) => p.id == studentId).firstOrNull;
-    final studentName = student?.name ?? 'Estudiante #$studentId';
-    final busCode = student?.busCode ?? 'BUS-01';
-    final schoolName = student?.schoolName ?? 'el colegio';
 
     try {
       await _supabase.from('asistencia_diaria').upsert(
@@ -104,7 +121,12 @@ class AttendanceService {
           'estado': 'delivered',
         },
         onConflict: 'estudiante_id,fecha,jornada',
-      );
+      ).timeout(const Duration(seconds: 4));
+
+      final meta = await _fetchStudentNotificationMeta(studentId);
+      final studentName = meta['name']!;
+      final busCode = meta['busCode']!;
+      final schoolName = meta['schoolName']!;
 
       // RF-15: Disparar notificación push de llegada segura al colegio
       await _supabase.from('notificaciones').insert({
@@ -113,7 +135,7 @@ class AttendanceService {
         'mensaje': '$studentName ingresó a $schoolName a las $timeStr.',
         'tipo': 'info',
         'leida': false,
-      });
+      }).timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Error en checkOutPassenger: $e');
       rethrow;
@@ -163,7 +185,7 @@ class AttendanceService {
     try {
       final response = await _supabase
           .from('asistencia_diaria')
-          .select()
+          .select('estudiante_id, fecha, jornada, estado, hora_abordaje, metodo_abordaje')
           .filter('estudiante_id', 'in', studentIds)
           .eq('fecha', _todayDate);
 
@@ -175,6 +197,9 @@ class AttendanceService {
         map[id] = row as Map<String, dynamic>;
       }
       return map;
+    } on PostgrestException catch (e) {
+      debugPrint('Error PostgREST en getTodayAttendanceForStudents [${e.code}]: ${e.message}');
+      return {};
     } catch (e) {
       debugPrint('Error en getTodayAttendanceForStudents: $e');
       return {};

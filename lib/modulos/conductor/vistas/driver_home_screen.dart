@@ -8,11 +8,15 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/servicios/osrm_routing_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/route_optimizer_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/telemetry_simulation_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
@@ -27,7 +31,7 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerProviderStateMixin {
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final MapController _mapController = MapController();
   double _currentZoom = 16.2;
   bool _showSchools = true;
@@ -36,12 +40,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
 
   BusMock? _bus;
   List<StudentPassengerMock> _passengers = [];
+  bool _hasLoadedDriverData = false;
   StreamSubscription? _attendanceSub;
-  Timer? _gpsTimer;
-
-  // Coordenadas base para la simulación de telemetría GPS
-  double _currentLat = 8.5270;
-  double _currentLng = -80.3512;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+  RealtimeChannel? _studentsRealtimeChannel;
+  StudentService? _studentService;
 
   // Monitor CCTV retrovisor interior en vivo
   bool _isCameraExpanded = true;
@@ -54,44 +57,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
     'CAM-03 [CABINA]',
   ];
 
-  // Motor de navegación en vivo: movimiento fluido y seguimiento de cámara suave
-  late AnimationController _navController;
-  LatLng _currentBusPos = const LatLng(8.5270, -80.3512);
+  // Motor de navegación en vivo basado en Dijkstra + OSRM + BusTelemetryController
+  BusTelemetryController? _telemetryController;
+  final OsrmRoutingService _osrmRoutingService = OsrmRoutingService();
+  late final RouteOptimizerService _routeOptimizer =
+      RouteOptimizerService(osrmService: _osrmRoutingService);
+  List<({String name, LatLng point})> _coveredSchoolDestinations = const [];
+  LatLng _currentBusPos = AppConstants.penonomeCenter;
   double _currentBearing = -160.0;
   int _currentSegmentIndex = 0;
   double _currentSpeed = 38.0;
   bool _isAutoTracking = true;
   DateTime _lastCameraMoveTime = DateTime.fromMillisecondsSinceEpoch(0);
-  List<double> _segmentDistances = [];
-  double _totalDistance = 0.0;
-
-  // Ruta 1: Desde la Casa del Estudiante hasta la Parada de Recogida (Ruta de acceso en Vía Cristo Rey)
-  final List<LatLng> studentWalkPath = const [
-    LatLng(8.5284, -80.3582), // Casa del Estudiante
-    LatLng(8.5281, -80.3565),
-    LatLng(8.5289, -80.3551),
-    LatLng(8.5268, -80.3533),
-    LatLng(8.5242, -80.3522), // Parada en Vía hacia Sonadora
-  ];
-
-  // Ruta 2: Recorrido del Autobús Colegial en vivo (trazada sobre calles reales vía OSRM)
-  final OsrmRoutingService _osrmRoutingService = OsrmRoutingService();
   List<LatLng> schoolBusPath = [
-    const LatLng(8.5270, -80.3512), // Origen ruta colegial
-    const LatLng(8.5242, -80.3522), // Parada de recogida del estudiante
-    const LatLng(8.5215, -80.3532), // Vía hacia Sonadora
-    const LatLng(8.5186, -80.3541), // Vía hacia Sonadora sur
-    const LatLng(8.5172, -80.3540), // Giro de acceso a barriada escolar
-    const LatLng(8.5160, -80.3522), // Calle de conexión
-    const LatLng(8.5146, -80.3508), // Avenida escolar
-    const LatLng(8.5156, -80.3500), // Acceso vehicular
-    const LatLng(8.5154, -80.3482), // Colegio San José (Destino)
+    AppConstants.penonomeCenter,
+    AppConstants.defaultSchoolPoint,
   ];
 
   @override
   void initState() {
     super.initState();
-    _initDistances();
     _currentBusPos = schoolBusPath.first;
     _updateClock();
 
@@ -100,33 +85,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
       if (mounted) setState(() => _updateClock());
     });
 
-    // Animador de desplazamiento continuo y suave (duración calibrada para velocidad realista de colegial)
-    _navController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 45),
-    )..addListener(_onNavTick)
-     ..addStatusListener((status) {
-       if (status == AnimationStatus.completed) {
-         _navController.forward(from: 0.0);
-       }
-     });
-
-    _navController.forward();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(GpsPermissionHelper.ensureLocationReady(context, showPromptIfDisabled: false));
+      BusService? busService;
+      try {
+        busService = context.read<BusService>();
+      } catch (_) {}
+      _telemetryController = BusTelemetryController(busService: busService)
+        ..addListener(_onTelemetryTick);
       _centerOnBus();
       _loadDriverData();
       _setupRealtimeSubscription();
-      _startGpsSimulation();
     });
   }
 
   @override
   void dispose() {
     _attendanceSub?.cancel();
-    _gpsTimer?.cancel();
+    _locationSub?.cancel();
+    _studentService?.unsubscribeChannel(_studentsRealtimeChannel);
     _clockTimer?.cancel();
-    _navController.dispose();
+    _telemetryController?.removeListener(_onTelemetryTick);
+    _telemetryController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -136,96 +117,98 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
       final studentService = context.read<StudentService>();
       final session = context.read<SessionManager>().currentSession;
 
-      // Ejecutar consulta de bus y estudiantes en paralelo con Future.wait
-      final results = await Future.wait([
-        (session != null && session.userId.isNotEmpty)
-            ? busService.getBusByDriver(session.userId)
-            : busService.getBusByCode('BUS-01'),
-        studentService.getStudentsByBus('BUS-01'),
-      ]);
+      BusMock? bus;
+      if (session != null && session.userId.isNotEmpty) {
+        bus = await busService.getBusByDriver(session.userId);
+      }
 
-      final bus = (results[0] as BusMock?) ??
-          MockData.getBusByCode('BUS-01') ??
-          MockData.buses.first;
+      if (bus == null) {
+        if (mounted) {
+          setState(() {
+            _bus = null;
+            _passengers = [];
+            _hasLoadedDriverData = true;
+          });
+        }
+        return;
+      }
 
-      final students = bus.code == 'BUS-01'
-          ? (results[1] as List<StudentPassengerMock>)
-          : await studentService.getStudentsByBus(bus.code);
-
-      final effectiveStudents = students.isNotEmpty
-          ? students
-          : MockData.getPassengersByBus(bus.code);
+      final students = await studentService.getStudentsByBus(bus.code);
 
       if (mounted) {
         setState(() {
           _bus = bus;
-          _passengers = effectiveStudents;
-          _currentLat = bus.latitude ?? _currentBusPos.latitude;
-          _currentLng = bus.longitude ?? _currentBusPos.longitude;
+          _passengers = students;
+          _hasLoadedDriverData = true;
+          if (bus!.latitude != null && bus.longitude != null) {
+            _currentBusPos = LatLng(bus.latitude!, bus.longitude!);
+          }
+          _currentSpeed =
+              bus.currentSpeedKmH > 0 ? bus.currentSpeedKmH.toDouble() : 34.0;
         });
       }
 
       // Actualizar polilínea de calles OSRM en segundo plano sin bloquear la UI
-      unawaited(_refreshOsrmStreetRoute(effectiveStudents));
+      unawaited(_refreshOsrmStreetRoute(students, bus));
     } catch (e) {
       debugPrint('Error cargando datos del conductor: $e');
+      if (mounted) {
+        setState(() => _hasLoadedDriverData = true);
+      }
     }
   }
 
-  /// Calcula la polilínea real sobre calles transitables usando OSRM (`OsrmRoutingService.getDrivingRoute`)
-  /// conectando los puntos de recogida de los estudiantes activos hasta el colegio de destino.
-  Future<void> _refreshOsrmStreetRoute(List<StudentPassengerMock> students) async {
-    final activeWaypoints = <LatLng>[
-      const LatLng(8.5270, -80.3512), // Punto de salida de la ruta
-    ];
+  /// Calcula la ruta óptima compartida (Dijkstra + OSRM multi-colegio) y alimenta
+  /// el controlador de telemetría para avanzar sobre la polilínea real.
+  Future<void> _refreshOsrmStreetRoute(
+    List<StudentPassengerMock> students,
+    BusMock bus,
+  ) async {
+    final optimized = await _routeOptimizer.buildOptimalRoute(
+      bus: bus,
+      students: students,
+    );
+    if (!mounted) return;
 
-    for (final s in students) {
-      if (s.status != PassengerStatus.absent &&
-          s.pickupLatitude != null &&
-          s.pickupLongitude != null) {
-        activeWaypoints.add(LatLng(s.pickupLatitude!, s.pickupLongitude!));
+    setState(() {
+      _coveredSchoolDestinations = optimized.orderedSchools;
+      if (optimized.polylinePoints.length >= 2) {
+        schoolBusPath = optimized.polylinePoints;
       }
-    }
+    });
 
-    activeWaypoints.add(const LatLng(8.5154, -80.3482)); // Destino Colegio San José
-
-    final streetGeometry = await _osrmRoutingService.getDrivingRoute(activeWaypoints);
-    if (mounted && streetGeometry.length >= 2) {
-      setState(() {
-        schoolBusPath = streetGeometry;
-        _initDistances();
-        if (_currentSegmentIndex >= schoolBusPath.length - 1) {
-          _currentSegmentIndex = 0;
-        }
-      });
+    final ctrl = _telemetryController;
+    if (ctrl != null && optimized.polylinePoints.length >= 2) {
+      ctrl.updateRoute(optimized, preserveProgress: true);
+      if (gpsActive && !ctrl.isPlaying && ctrl.mode == TelemetryMode.simulated) {
+        ctrl.start();
+      }
     }
   }
 
   void _setupRealtimeSubscription() {
     final attendanceService = context.read<AttendanceService>();
+    final studentService = context.read<StudentService>();
+    _studentService = studentService;
+
     _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
       if (mounted) {
         _loadDriverData(silent: true);
       }
     });
-  }
-
-  void _startGpsSimulation() {
-    _gpsTimer?.cancel();
-    _gpsTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
-      if (!gpsActive || _bus == null || !mounted) return;
-
-      _currentLat = _currentBusPos.latitude;
-      _currentLng = _currentBusPos.longitude;
-
-      final busService = context.read<BusService>();
-      busService.updateBusLocation(
-        busCode: _bus!.code,
-        latitude: _currentLat,
-        longitude: _currentLng,
-        speedKmH: _currentSpeed.round(),
-      );
+    _locationSub = StudentService.locationUpdatesStream.listen((updated) {
+      if (mounted && (_bus == null || updated.busCode == _bus!.code)) {
+        _loadDriverData(silent: true);
+      }
     });
+    _studentsRealtimeChannel = studentService.subscribeToStudentChanges(
+      channelName: 'driver_home_estudiantes_${DateTime.now().millisecondsSinceEpoch}',
+      onChanged: () {
+        if (mounted) {
+          _loadDriverData(silent: true);
+        }
+      },
+    );
   }
 
   void _updateClock() {
@@ -233,62 +216,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
     _liveClock = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
   }
 
-  void _initDistances() {
-    _segmentDistances = [];
-    _totalDistance = 0.0;
-    for (int i = 0; i < schoolBusPath.length - 1; i++) {
-      final d = _calculateDistance(schoolBusPath[i], schoolBusPath[i + 1]);
-      _segmentDistances.add(d);
-      _totalDistance += d;
-    }
-  }
-
-  double _calculateDistance(LatLng p1, LatLng p2) {
-    final latAvg = (p1.latitude + p2.latitude) / 2 * math.pi / 180;
-    final dy = (p2.latitude - p1.latitude) * 111320;
-    final dx = (p2.longitude - p1.longitude) * 111320 * math.cos(latAvg);
-    return math.sqrt(dx * dx + dy * dy);
-  }
-
-  ({LatLng position, double bearing, int segmentIndex}) _interpolateNavPosition(double progress) {
-    if (_segmentDistances.isEmpty || _totalDistance == 0) {
-      return (position: schoolBusPath.first, bearing: -160.0, segmentIndex: 0);
-    }
-    final targetDistance = progress * _totalDistance;
-    double accum = 0.0;
-
-    for (int i = 0; i < _segmentDistances.length; i++) {
-      final d = _segmentDistances[i];
-      if (accum + d >= targetDistance || i == _segmentDistances.length - 1) {
-        final segT = d > 0 ? ((targetDistance - accum) / d).clamp(0.0, 1.0) : 0.0;
-        final p1 = schoolBusPath[i];
-        final p2 = schoolBusPath[i + 1];
-        final lat = p1.latitude + segT * (p2.latitude - p1.latitude);
-        final lon = p1.longitude + segT * (p2.longitude - p1.longitude);
-        final bearing = math.atan2(p2.longitude - p1.longitude, p2.latitude - p1.latitude) * 180 / math.pi;
-        return (position: LatLng(lat, lon), bearing: bearing, segmentIndex: i);
-      }
-      accum += d;
-    }
-    return (position: schoolBusPath.last, bearing: 0.0, segmentIndex: _segmentDistances.length - 1);
-  }
-
-  void _onNavTick() {
-    if (!mounted) return;
-    final navData = _interpolateNavPosition(_navController.value);
+  void _onTelemetryTick() {
+    final ctrl = _telemetryController;
+    if (!mounted || ctrl == null) return;
+    final prevPos = _currentBusPos;
+    final nextPos = ctrl.currentPosition;
+    final moved = (nextPos.latitude - prevPos.latitude).abs() > 1e-7 ||
+        (nextPos.longitude - prevPos.longitude).abs() > 1e-7;
 
     setState(() {
-      _currentBusPos = navData.position;
-      _currentBearing = navData.bearing;
-      _currentSegmentIndex = navData.segmentIndex;
-      // Fluctuación realista de velocidad urbana entre 33 y 41 km/h
-      _currentSpeed = 37.0 + math.sin(_navController.value * 28 * math.pi) * 3.8;
+      _currentBusPos = nextPos;
+      _currentSpeed = ctrl.currentSpeedKmH;
+      _currentSegmentIndex = ctrl.currentVertexIndex;
+      if (moved) {
+        _currentBearing = math.atan2(
+              nextPos.longitude - prevPos.longitude,
+              nextPos.latitude - prevPos.latitude,
+            ) *
+            180 /
+            math.pi;
+      }
     });
 
-    // Seguimiento suave del mapa de la ubicación del vehículo (limitado a ~12 FPS de cámara para rendimiento óptimo)
     if (_isAutoTracking) {
       final now = DateTime.now();
-      if (now.difference(_lastCameraMoveTime).inMilliseconds >= 80) {
+      if (now.difference(_lastCameraMoveTime).inMilliseconds >= 120) {
         _lastCameraMoveTime = now;
         _mapController.move(_currentBusPos, _currentZoom);
       }
@@ -296,26 +248,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   }
 
   String _getNavigationInstruction(int segmentIndex) {
-    switch (segmentIndex) {
-      case 0:
-        return "Avanza por Vía hacia Sonadora hacia Parada de recogida";
-      case 1:
-        return "Próxima detención: Parada Asignada (Estudiantes esperan)";
-      case 2:
-        return "Continúa recto por Vía hacia Sonadora (950 m)";
-      case 3:
-        return "En 120 m: Gira a la izquierda hacia Barriada Escolar";
-      case 4:
-        return "Giro completado: Ingrese por Calle de Conexión";
-      case 5:
-        return "Avanza por Avenida Escolar (320 m)";
-      case 6:
-        return "En 80 m: Gira a la derecha hacia Acceso Vehicular";
-      case 7:
-        return "Destino en 120 m: Colegio San José a la derecha";
-      default:
-        return "Ruta hacia Colegio San José";
+    final ctrl = _telemetryController;
+    if (ctrl != null && ctrl.nextStopLabel.isNotEmpty) {
+      return 'Próx. parada: ${ctrl.nextStopLabel}';
     }
+    final schools = _coveredSchoolDestinations.map((s) => s.name).toList();
+    if (schools.isNotEmpty) {
+      return 'Ruta hacia: ${schools.join(' • ')}';
+    }
+    final fallback = BusService.extractCoveredSchools(
+      _passengers.where((p) => p.status != PassengerStatus.absent),
+      fallbackSchool: _bus?.schoolName,
+    );
+    return fallback.isNotEmpty
+        ? 'Ruta hacia: ${fallback.join(' • ')}'
+        : 'Ruta escolar activa en Penonomé';
   }
 
   IconData _getManeuverIcon(int segmentIndex) {
@@ -368,10 +315,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
-    final bus = _bus ?? MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final allPassengers = _passengers.isNotEmpty
-        ? _passengers
-        : MockData.getPassengersByBus(bus.code);
+    final bus = _bus;
+    final allPassengers = _passengers;
     final onboardCount = allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
     final absentCount = allPassengers.where((p) => p.status == PassengerStatus.absent).length;
     final isMobile = MediaQuery.sizeOf(context).width < 600;
@@ -547,17 +492,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   // ==========================================
   // MAPA INTERACTIVO CON POLILÍNEAS Y NAVEGACIÓN
   // ==========================================
-  Widget _buildDriverMap(dynamic bus) {
+  Widget _buildDriverMap(BusMock? bus) {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
-    final traveledPoints = <LatLng>[
-      ...schoolBusPath.sublist(0, _currentSegmentIndex + 1),
-      _currentBusPos,
-    ];
+    final safeSegIdx = schoolBusPath.isNotEmpty
+        ? _currentSegmentIndex.clamp(0, schoolBusPath.length - 1)
+        : 0;
+    final traveledPoints = schoolBusPath.isNotEmpty
+        ? <LatLng>[
+            ...schoolBusPath.sublist(0, safeSegIdx + 1),
+            _currentBusPos,
+          ]
+        : <LatLng>[];
 
-    final remainingPoints = <LatLng>[
-      _currentBusPos,
-      ...schoolBusPath.sublist(_currentSegmentIndex + 1),
-    ];
+    final remainingPoints = schoolBusPath.length > safeSegIdx + 1
+        ? <LatLng>[
+            _currentBusPos,
+            ...schoolBusPath.sublist(safeSegIdx + 1),
+          ]
+        : <LatLng>[];
+
+    final schoolMarkers = _coveredSchoolDestinations.isNotEmpty
+        ? _coveredSchoolDestinations
+        : [
+            (
+              name: bus?.schoolName ?? 'Colegio destino',
+              point: schoolBusPath.isNotEmpty
+                  ? schoolBusPath.last
+                  : AppConstants.resolveSchoolPoint(bus?.schoolName),
+            ),
+          ];
 
     return FlutterMap(
       mapController: _mapController,
@@ -581,18 +544,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
         ),
         PolylineLayer(
           polylines: [
-            // Ruta del Estudiante (Casa -> Parada)
-            Polyline(
-              points: studentWalkPath,
-              color: SmartColors.primaryCrimson.withValues(alpha: 0.25),
-              strokeWidth: 8.0,
-            ),
-            Polyline(
-              points: studentWalkPath,
-              color: SmartColors.primaryCrimson,
-              strokeWidth: 4.5,
-            ),
-
             // Tramo ya recorrido del Bus (en azul noche atenuado)
             if (traveledPoints.length >= 2) ...[
               Polyline(
@@ -619,51 +570,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
         ),
         MarkerLayer(
           markers: [
-            // Marcador 1: Casa del Estudiante
-            Marker(
-              point: studentWalkPath.first,
-              width: isMobile ? 30 : 130,
-              height: isMobile ? 30 : 56,
-              child: _buildLocationPin(
-                title: "CASA DE MATEO",
-                subtitle: "Salida 06:45 AM",
-                icon: Icons.home_rounded,
-                pinColor: SmartColors.primaryCrimson,
-                isMobile: isMobile,
+            // Marcadores dinámicos de todos los colegios cubiertos por los estudiantes del bus
+            ...schoolMarkers.map(
+              (dest) => Marker(
+                point: dest.point,
+                width: isMobile ? 30 : 145,
+                height: isMobile ? 30 : 56,
+                child: _buildLocationPin(
+                  title: dest.name.toUpperCase(),
+                  subtitle: 'Destino escolar',
+                  icon: Icons.school_rounded,
+                  pinColor: SmartColors.smartGreen,
+                  isMobile: isMobile,
+                ),
               ),
             ),
 
-            // Marcador 2: Parada de Recogida
-            Marker(
-              point: studentWalkPath.last,
-              width: isMobile ? 30 : 140,
-              height: isMobile ? 30 : 56,
-              child: _buildLocationPin(
-                title: "PARADA ASIGNADA",
-                subtitle: "Vía Sonadora // 07:05 AM",
-                icon: Icons.directions_bus_rounded,
-                pinColor: SmartColors.deepBlue,
-                isMobile: isMobile,
-              ),
-            ),
-
-            // Marcador 3: Colegio San José (Destino Escolar)
-            Marker(
-              point: schoolBusPath.last,
-              width: isMobile ? 30 : 130,
-              height: isMobile ? 30 : 56,
-              child: _buildLocationPin(
-                title: "COLEGIO SAN JOSÉ",
-                subtitle: "Llegada 07:20 AM",
-                icon: Icons.school_rounded,
-                pinColor: SmartColors.smartGreen,
-                isMobile: isMobile,
-              ),
-            ),
-
-            // Marcadores dinámicos de domicilios de estudiantes registrados con coordenadas GPS
-            ...(_passengers.isNotEmpty ? _passengers : MockData.passengers)
-                .where((s) => s.pickupLatitude != null && s.pickupLongitude != null && s.id != 1)
+            // Marcadores dinámicos de domicilios de TODOS los estudiantes asignados al bus
+            ..._passengers
+                .where((s) => s.pickupLatitude != null && s.pickupLongitude != null)
                 .map((student) {
               final isAbsent = student.status == PassengerStatus.absent;
               final isOnboard = student.status == PassengerStatus.onboard;
@@ -690,20 +615,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
             }),
 
             // Marcador 4: Vehículo Colegial con Movimiento Fluido y Orientación de Rumbo
-            Marker(
-              point: _currentBusPos,
-              width: 180,
-              height: 96,
-              child: _buildSmoothNavigationBusMarker(
-                code: bus?.code ?? "BUS-01",
-                speed: _currentSpeed,
-                bearing: _currentBearing,
+            if (bus != null)
+              Marker(
+                point: _currentBusPos,
+                width: 180,
+                height: 96,
+                child: _buildSmoothNavigationBusMarker(
+                  code: bus.code,
+                  speed: _currentSpeed,
+                  bearing: _currentBearing,
+                ),
               ),
-            ),
 
-            // Marcadores de los 9 Colegios y Escuelas de Penonomé mapeados con Punto Rojo
+            // Marcadores de los Colegios y Escuelas de Penonomé mapeados con Punto Rojo
             if (_showSchools)
-              ...MockData.penonomeSchools.map((school) {
+              ...AppConstants.penonomeSchools.map((school) {
                 final isSelected = _selectedSchool?.id == school.id;
                 return Marker(
                   point: LatLng(school.latitude, school.longitude),
@@ -880,7 +806,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        '• DESTINO: COL. SAN JOSÉ',
+                        '• DESTINO: ${(_bus?.schoolName ?? "SIN ASIGNAR").toUpperCase()}',
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 8.5,
                           fontWeight: FontWeight.w700,
@@ -1111,7 +1037,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '${bus.seatsOccupied ?? 8}/${bus.capacity ?? 14} ALUMNOS • CABINA OK',
+                          '${bus?.seatsOccupied ?? _passengers.length}/${bus?.capacity ?? 0} ALUMNOS • CABINA OK',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
@@ -1212,6 +1138,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   }
 
   Widget _buildNextStopInfo() {
+    final waitingStudents =
+        _passengers.where((p) => p.status == PassengerStatus.waiting).toList();
+    final nextStudent = waitingStudents.firstOrNull;
+    final hasBus = _bus != null;
+    final coveredSchools = _coveredSchoolDestinations.isNotEmpty
+        ? _coveredSchoolDestinations.map((s) => s.name).toList()
+        : BusService.extractCoveredSchools(
+            _passengers.where((p) => p.status != PassengerStatus.absent),
+            fallbackSchool: _bus?.schoolName,
+          );
+    final schoolsSummary = coveredSchools.isNotEmpty
+        ? 'Colegios: ${coveredSchools.join(' • ')}'
+        : 'Ruta escolar activa';
+    final title = !hasBus
+        ? (_hasLoadedDriverData ? 'Sin unidad asignada' : 'Sincronizando unidad...')
+        : (nextStudent != null ? nextStudent.name : schoolsSummary);
+    final subtitle = !hasBus
+        ? 'Contacta al transportista para vincular un bus'
+        : (nextStudent != null
+            ? '${nextStudent.pickupAddress} • ${waitingStudents.length} espera(n)'
+            : '${_passengers.length} alumno(s) en manifiesto');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1231,15 +1179,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
               decoration: BoxDecoration(
-                color: SmartColors.smartLightGreen,
+                color: hasBus ? SmartColors.smartLightGreen : SmartColors.neuInset,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                'EN RUTA',
+                hasBus ? 'EN RUTA' : 'PENDIENTE',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 7.5,
                   fontWeight: FontWeight.w800,
-                  color: SmartColors.smartGreen,
+                  color: hasBus ? SmartColors.smartGreen : SmartColors.smartGray,
                 ),
               ),
             ),
@@ -1247,7 +1195,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
         ),
         const SizedBox(height: 2),
         Text(
-          'Colegio San José - Puerta 1',
+          title,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -1257,7 +1205,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
           overflow: TextOverflow.ellipsis,
         ),
         Text(
-          'Calle 127 # 45-20 • 2 Estudiantes esperan',
+          subtitle,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 10.5,
             fontWeight: FontWeight.w500,
@@ -1273,7 +1221,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
   // ==========================================
   // COMPONENTES FLOTANTES DEL CONDUCTOR & MAPA
   // ==========================================
-  Widget _buildDriverHeaderPill(String driverName, dynamic bus, {bool isMobile = false}) {
+  Widget _buildDriverHeaderPill(String driverName, BusMock? bus, {bool isMobile = false}) {
     return GestureDetector(
       onTap: _centerOnBus,
       child: NeumorphicBox(
@@ -1351,7 +1299,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
                     ),
                   ),
                   Text(
-                    '${bus.code} • ${bus.routeName ?? "Ruta Escolar Norte"}',
+                    bus != null
+                        ? '${bus.code} • ${bus.routeName ?? "Ruta en Penonomé"}'
+                        : (_hasLoadedDriverData ? 'SIN BUS ASIGNADO' : 'Cargando unidad...'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(
@@ -1365,7 +1315,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with SingleTickerPr
             ),
             if (!isMobile) ...[
               const SizedBox(width: 12),
-              StatusChip(text: bus.status),
+              StatusChip(text: bus?.status ?? 'SIN BUS'),
             ],
           ],
         ),

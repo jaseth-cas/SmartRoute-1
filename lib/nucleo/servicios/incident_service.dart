@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
 /// Servicio para el reporte de incidentes en ruta y gestión de notificaciones escolares en vivo.
 class IncidentService {
+  static const String _notificationColumns =
+      'id, autobus_codigo, titulo, mensaje, tipo, leida, created_at';
+
   final SupabaseClient? _injectedClient;
 
   IncidentService({SupabaseClient? supabaseClient}) : _injectedClient = supabaseClient;
@@ -53,7 +55,7 @@ class IncidentService {
   /// Consulta la lista de notificaciones escolares recientes
   Future<List<NotificationMock>> getNotifications({String? busCode}) async {
     try {
-      var query = _supabase.from('notificaciones').select();
+      var query = _supabase.from('notificaciones').select(_notificationColumns);
       if (busCode != null && busCode.isNotEmpty) {
         query = query.eq('autobus_codigo', busCode);
       }
@@ -89,6 +91,9 @@ class IncidentService {
           type: row['tipo'] ?? 'info',
         );
       }).toList();
+    } on PostgrestException catch (e) {
+      debugPrint('Error PostgREST en getNotifications [${e.code}]: ${e.message}');
+      return [];
     } catch (e) {
       debugPrint('Error en getNotifications: $e');
       return [];
@@ -97,16 +102,12 @@ class IncidentService {
 
   /// Marca una notificación como leída
   Future<void> markAsRead(int notificationId) async {
-    final index = MockData.notifications.indexWhere((n) => n.id == notificationId);
-    if (index != -1) {
-      MockData.notifications[index] = MockData.notifications[index].copyWith(read: true);
-    }
-
     try {
       await _supabase
           .from('notificaciones')
           .update({'leida': true})
-          .eq('id', notificationId);
+          .eq('id', notificationId)
+          .timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Error en markAsRead: $e');
     }
@@ -114,16 +115,12 @@ class IncidentService {
 
   /// Marca todas las notificaciones como leídas
   Future<void> markAllAsRead({String? busCode}) async {
-    for (int i = 0; i < MockData.notifications.length; i++) {
-      MockData.notifications[i] = MockData.notifications[i].copyWith(read: true);
-    }
-
     try {
-      var query = _supabase.from('notificaciones').update({'leida': true});
+      final query = _supabase.from('notificaciones').update({'leida': true});
       if (busCode != null && busCode.isNotEmpty) {
-        await query.eq('autobus_codigo', busCode);
+        await query.eq('autobus_codigo', busCode).timeout(const Duration(seconds: 3));
       } else {
-        await query.eq('leida', false);
+        await query.eq('leida', false).timeout(const Duration(seconds: 3));
       }
     } catch (e) {
       debugPrint('Error en markAllAsRead: $e');
@@ -132,22 +129,22 @@ class IncidentService {
 
   /// Stream en tiempo real de notificaciones (WebSockets)
   Stream<List<NotificationMock>> streamNotifications({String? busCode}) {
-    return _supabase
-        .from('notificaciones')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
-        .map((rows) {
-          return rows.map((row) {
-            final id = row['id'] is int ? row['id'] : int.tryParse(row['id']?.toString() ?? '0') ?? 0;
-            return NotificationMock(
-              id: id,
-              title: row['titulo'] ?? 'Aviso Escolar',
-              message: row['mensaje'] ?? '',
-              time: 'En vivo',
-              read: row['leida'] ?? false,
-              type: row['tipo'] ?? 'info',
-            );
-          }).toList();
-        });
+    final streamBuilder = _supabase.from('notificaciones').stream(primaryKey: ['id']);
+    final filtered = (busCode != null && busCode.isNotEmpty)
+        ? streamBuilder.eq('autobus_codigo', busCode)
+        : streamBuilder;
+    return filtered.order('created_at', ascending: false).map((rows) {
+      return rows.map((row) {
+        final id = row['id'] is int ? row['id'] : int.tryParse(row['id']?.toString() ?? '0') ?? 0;
+        return NotificationMock(
+          id: id,
+          title: row['titulo'] ?? 'Aviso Escolar',
+          message: row['mensaje'] ?? '',
+          time: 'En vivo',
+          read: row['leida'] ?? false,
+          type: row['tipo'] ?? 'info',
+        );
+      }).toList();
+    });
   }
 }
