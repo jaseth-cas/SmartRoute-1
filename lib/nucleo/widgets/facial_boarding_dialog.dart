@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 /// Diálogo interactivo que simula el Terminal de Reconocimiento Facial AI (Edge ML)
@@ -43,14 +43,13 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
   late Animation<double> _scanAnimation;
 
   int _step = 0; // 0: Escaneando, 1: Coincidencia, 2: Registrado
-  late StudentPassengerMock _selectedStudent;
+  StudentPassengerMock? _selectedStudent;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    final waiting = MockData.passengers.where((p) => p.status == PassengerStatus.waiting).toList();
-    _selectedStudent = widget.targetStudent ?? (waiting.isNotEmpty ? waiting.first : MockData.passengers.first);
+    _selectedStudent = widget.targetStudent;
 
     _animController = AnimationController(
       vsync: this,
@@ -59,12 +58,33 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
 
     _scanAnimation = Tween<double>(begin: 0.1, end: 0.9).animate(_animController);
 
+    _resolveStudentAndScan();
+  }
+
+  Future<void> _resolveStudentAndScan() async {
+    if (_selectedStudent == null) {
+      try {
+        final students = await context.read<StudentService>().getAllStudents();
+        final waiting =
+            students.where((p) => p.status == PassengerStatus.waiting).toList();
+        _selectedStudent = waiting.isNotEmpty
+            ? waiting.first
+            : (students.isNotEmpty ? students.first : null);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    if (_selectedStudent == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {});
     _startSimulatedRecognition();
   }
 
   void _startSimulatedRecognition() {
     _timer = Timer(const Duration(milliseconds: 1600), () async {
-      if (mounted) {
+      if (mounted && _selectedStudent != null) {
         setState(() {
           _step = 1;
         });
@@ -73,13 +93,12 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
         try {
           final attendanceService = context.read<AttendanceService>();
           await attendanceService.checkInPassenger(
-            studentId: _selectedStudent.id,
+            studentId: _selectedStudent!.id,
             method: 'Biometría Facial AI',
           );
         } catch (e) {
           debugPrint('Aviso registrando abordaje en Supabase: $e');
         }
-        MockData.checkInPassenger(_selectedStudent.id, method: 'Biometría Facial AI');
 
         _timer = Timer(const Duration(milliseconds: 1200), () {
           if (mounted) {
@@ -299,7 +318,7 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _selectedStudent.name,
+                              _selectedStudent?.name ?? 'Sin alumno pendiente',
                               style: GoogleFonts.plusJakartaSans(
                                 color: SmartColors.ghostWhite,
                                 fontWeight: FontWeight.w800,
@@ -307,7 +326,7 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                               ),
                             ),
                             Text(
-                              '${_selectedStudent.schoolName} • ${_selectedStudent.busCode}',
+                              '${_selectedStudent?.schoolName ?? 'SmartRoute'} • ${_selectedStudent?.busCode ?? '--'}',
                               style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white60,
                                 fontSize: 12,
@@ -336,7 +355,7 @@ class _FacialBoardingDialogState extends State<FacialBoardingDialog> with Single
                           style: GoogleFonts.jetBrainsMono(color: Colors.white54, fontSize: 10.5),
                         ),
                         Text(
-                          _selectedStudent.parentName,
+                          _selectedStudent?.parentName ?? 'Sin tutor asignado',
                           style: GoogleFonts.plusJakartaSans(
                             color: SmartColors.ghostWhite,
                             fontWeight: FontWeight.w700,

@@ -8,9 +8,12 @@ import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/continuous_tabs.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
 import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -24,8 +27,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final AuthService _authService = AuthService();
-  final TextEditingController _emailController = TextEditingController(text: 'padre@smartroute.com');
-  final TextEditingController _passwordController = TextEditingController(text: 'Password123!');
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   UserRole selectedRole = UserRole.student;
   bool passwordVisible = false;
   bool _isLoading = false;
@@ -37,46 +40,220 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String _emailHintForRole(UserRole role) {
+    switch (role) {
+      case UserRole.student:
+        return 'padre1@smartroute.com';
+      case UserRole.driver:
+        return 'conductor@smartroute.com';
+      case UserRole.owner:
+        return 'dueno@smartroute.com';
+    }
+  }
+
   void _updateCredentialsForRole(UserRole role) {
     setState(() {
       selectedRole = role;
-      switch (role) {
-        case UserRole.student:
-          _emailController.text = 'padre@smartroute.com';
-          _passwordController.text = 'Password123!';
-          break;
-        case UserRole.driver:
-          _emailController.text = 'conductor@smartroute.com';
-          _passwordController.text = 'Password123!';
-          break;
-        case UserRole.owner:
-          _emailController.text = 'dueno@smartroute.com';
-          _passwordController.text = 'Password123!';
-          break;
-      }
     });
   }
 
-  void _enterRole(UserRole role) {
-    String customName = _emailController.text;
-    if (_emailController.text.contains('@')) {
-      customName = _emailController.text.split('@')[0];
-      if (customName.isNotEmpty) {
-        customName = customName[0].toUpperCase() + customName.substring(1);
+  Future<void> _enterRole(UserRole role, {String? customName}) async {
+    String resolvedName = customName ?? _emailController.text;
+    if (customName == null && _emailController.text.contains('@')) {
+      resolvedName = _emailController.text.split('@')[0];
+      if (resolvedName.isNotEmpty) {
+        resolvedName = resolvedName[0].toUpperCase() + resolvedName.substring(1);
       }
     }
-    context.read<SessionManager>().login(role, customName: customName);
-    switch (role) {
-      case UserRole.student:
-        context.go('/student_home');
-        break;
-      case UserRole.driver:
-        context.go('/driver_home');
-        break;
-      case UserRole.owner:
-        context.go('/owner_home');
-        break;
+    if (customName == null) {
+      context.read<SessionManager>().login(role, customName: resolvedName);
     }
+
+    await GpsPermissionHelper.ensureLocationReady(context);
+    if (!mounted) return;
+
+    final targetRoute = role == UserRole.student
+        ? '/student_home'
+        : role == UserRole.driver
+            ? '/driver_welcome_splash'
+            : '/owner_home';
+
+    final roleLabel = role == UserRole.student
+        ? 'PADRE DE FAMILIA'
+        : role == UserRole.driver
+            ? 'CHOFER DE RUTA'
+            : 'DUEÑO DE FLOTA';
+
+    TransitLoadingScreen.open(
+      context,
+      targetRoute: targetRoute,
+      title: 'ACCEDIENDO COMO $roleLabel',
+      subtitle:
+          'Iniciando sesión segura y sincronizando telemetría de ruta en Penonomé...',
+      badge: 'AUTENTICACIÓN TRANSIT OS',
+    );
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await _authService.signIn(
+        email: email,
+        password: password,
+      );
+
+      final user = response.user;
+      final session = response.session;
+
+      if (!mounted) return;
+
+      if (user != null && session != null) {
+        final profile = await _authService.fetchUserProfile(user.id);
+        if (!mounted) return;
+
+        final String nombre = profile?['nombre'] ??
+            user.userMetadata?['nombre'] ??
+            (email.contains('@') ? email.split('@')[0] : email);
+
+        final String rolStr =
+            profile?['rol'] ?? user.userMetadata?['rol'] ?? selectedRole.name;
+
+        final UserRole matchedRole = UserRole.values.firstWhere(
+          (r) => r.name == rolStr,
+          orElse: () => selectedRole,
+        );
+
+        context.read<SessionManager>().loginWithSupabase(
+              userId: user.id,
+              name: nombre,
+              email: user.email ?? email,
+              role: matchedRole,
+              token: session.accessToken,
+            );
+
+        await _enterRole(matchedRole, customName: nombre);
+        return;
+      }
+      throw StateError('No se recibió una sesión válida desde Supabase.');
+    } catch (e) {
+      debugPrint('Error en Supabase login: $e');
+      if (mounted) {
+        final raw = e.toString();
+        final String msg;
+        if (raw.contains('SocketException') ||
+            raw.contains('Connection refused') ||
+            raw.contains('54321') ||
+            raw.contains('TimeoutException')) {
+          msg =
+              'Sin conexión con Supabase (127.0.0.1:54321). Verifica Docker o ejecuta: adb reverse tcp:54321 tcp:54321.';
+        } else if (raw.contains('Invalid login credentials') ||
+            raw.contains('invalid_credentials')) {
+          msg = 'Correo o contraseña incorrectos en Supabase.';
+        } else {
+          msg = 'No se pudo iniciar sesión: $e';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: SmartColors.smartRed,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showForgotPasswordDialog() {
+    final resetFormKey = GlobalKey<FormState>();
+    String recoveryEmail = _emailController.text;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SmartColors.neuSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Recuperar contraseña',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w800,
+            color: SmartColors.deepBlack,
+          ),
+        ),
+        content: Form(
+          key: resetFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ingresa tu correo electrónico registrado y te enviaremos un enlace seguro de restablecimiento.',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  color: SmartColors.smartGray,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: recoveryEmail,
+                keyboardType: TextInputType.emailAddress,
+                validator: Validators.validateEmail,
+                onChanged: (val) => recoveryEmail = val,
+                decoration: InputDecoration(
+                  hintText: 'correo@smartroute.com',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: SmartColors.smartGray),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SmartColors.deepBlue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              if (!resetFormKey.currentState!.validate()) return;
+              Navigator.pop(ctx);
+              await _authService.resetPassword(recoveryEmail);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Instrucciones de recuperación enviadas a ${recoveryEmail.trim()}',
+                  ),
+                  backgroundColor: SmartColors.smartGreen,
+                ),
+              );
+            },
+            child: const Text('Enviar enlace'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -91,7 +268,10 @@ class _LoginScreenState extends State<LoginScreen> {
             if (isWideWeb) {
               return Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 28.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32.0,
+                    vertical: 28.0,
+                  ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1060),
                     child: Row(
@@ -121,7 +301,10 @@ class _LoginScreenState extends State<LoginScreen> {
               // Vista Móvil / Pantallas Angostas
               return Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 20.0,
+                  ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 480),
                     child: _buildLoginForm(isWeb: false),
@@ -364,65 +547,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 8),
 
-          Container(
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: SmartColors.neuInset,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: SmartColors.deepBlue.withValues(alpha: 0.05),
-                  offset: const Offset(1.5, 2),
-                  blurRadius: 4,
-                ),
-                const BoxShadow(
-                  color: Colors.white,
-                  offset: Offset(-1.5, -2),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            child: Row(
-              children: UserRole.values.map((role) {
-                final isSelected = selectedRole == role;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => _updateCredentialsForRole(role),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? SmartColors.deepBlack : Colors.transparent,
-                        borderRadius: BorderRadius.circular(999),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                                  offset: const Offset(0, 3),
-                                  blurRadius: 8,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        role == UserRole.student
-                            ? 'PADRE'
-                            : role == UserRole.driver
-                                ? 'CHOFER'
-                                : 'DUEÑO',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                          color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+          ContinuousTabs<UserRole>(
+            selected: selectedRole,
+            onChanged: _updateCredentialsForRole,
+            tabs: const [
+              ContinuousTabItem(value: UserRole.student, label: 'PADRE'),
+              ContinuousTabItem(value: UserRole.driver, label: 'CHOFER'),
+              ContinuousTabItem(value: UserRole.owner, label: 'DUEÑO'),
+            ],
           ),
           const SizedBox(height: 20),
 
@@ -430,21 +562,24 @@ class _LoginScreenState extends State<LoginScreen> {
           CustomTextField(
             controller: _emailController,
             label: 'Correo Electrónico',
-            hint: 'correo@smartroute.com',
+            hint: _emailHintForRole(selectedRole),
             prefixIcon: Icons.alternate_email_rounded,
+            keyboardType: TextInputType.emailAddress,
             validator: Validators.validateEmail,
           ),
           const SizedBox(height: 16),
           CustomTextField(
             controller: _passwordController,
             label: 'Contraseña',
-            hint: '••••••••',
+            hint: 'Ingresa tu contraseña',
             prefixIcon: Icons.lock_outline_rounded,
             isPassword: !passwordVisible,
             validator: Validators.validatePassword,
             suffixIcon: IconButton(
               icon: Icon(
-                passwordVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                passwordVisible
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
                 color: SmartColors.deepBlue,
                 size: 20,
               ),
@@ -479,19 +614,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // Botón Único de Ingreso
           PrimaryButton(
-            text: _isLoading ? 'INGRESANDO...' : 'INGRESAR AL SISTEMA',
-            icon: _isLoading ? Icons.hourglass_top_rounded : Icons.login_rounded,
+            text: _isLoading ? 'SINCRONIZANDO...' : 'INGRESAR AL SISTEMA',
+            icon: Icons.login_rounded,
             enabled: !_isLoading,
-            onPressed: () {
-              if (_formKey.currentState!.validate()) {
-                _handleLogin();
-              }
-            },
+            onPressed: _handleLogin,
           ),
           const SizedBox(height: 18),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               Text(
                 '¿No tienes cuenta?',
@@ -500,7 +634,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => context.push('/register'),
                 child: Text(
@@ -509,6 +642,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: SmartColors.deepBlue,
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: _showForgotPasswordDialog,
+                child: Text(
+                  'Olvidé mi contraseña',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: SmartColors.smartGray,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -527,89 +672,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Chofer de Ruta Escolar';
       case UserRole.owner:
         return 'Dueño de Flota Escolar';
-    }
-  }
-
-  Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _isLoading = true;
-    });
-
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    try {
-      // 1. Iniciar sesión real en el servidor Supabase (Docker)
-      final response = await _authService.signIn(
-        email: email,
-        password: password,
-      );
-
-      final user = response.user;
-      final session = response.session;
-
-      if (!mounted) return;
-
-      if (user != null && session != null) {
-        // Consultar el perfil y rol registrado en PostgreSQL
-        final profile = await _authService.fetchUserProfile(user.id);
-        if (!mounted) return;
-
-        final String nombre = profile?['nombre'] ??
-            user.userMetadata?['nombre'] ??
-            (email.contains('@') ? email.split('@')[0] : email);
-
-        final String rolStr = profile?['rol'] ??
-            user.userMetadata?['rol'] ??
-            selectedRole.name;
-
-        final UserRole matchedRole = UserRole.values.firstWhere(
-          (r) => r.name == rolStr,
-          orElse: () => selectedRole,
-        );
-
-        context.read<SessionManager>().loginWithSupabase(
-              userId: user.id,
-              name: nombre,
-              email: user.email ?? email,
-              role: matchedRole,
-              token: session.accessToken,
-            );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sesión iniciada: $nombre (${matchedRole.displayName})'),
-            backgroundColor: SmartColors.smartGreen,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        widget.onLoginSuccess();
-        return;
-      }
-    } catch (e) {
-      debugPrint('Aviso Supabase login: $e');
-      if (!mounted) return;
-
-      final errorMsg = e.toString().replaceAll('AuthException', '').replaceAll(':', '').trim();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Supabase offline o credenciales no encontradas: $errorMsg'),
-          backgroundColor: SmartColors.smartRed,
-          action: SnackBarAction(
-            label: 'Acceso Demo',
-            textColor: Colors.white,
-            onPressed: () => _enterRole(selectedRole),
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 }

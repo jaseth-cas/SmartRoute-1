@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:provider/provider.dart';
+import 'package:smartroute_flutter/modulos/padre/vistas/student_location_picker_screen.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/custom_text_field.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/widgets/continuous_tabs.dart';
 import 'package:smartroute_flutter/nucleo/utilidades/validators.dart';
-import 'package:smartroute_flutter/nucleo/servicios/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,30 +25,52 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final AuthService _authService = AuthService();
-  
+
   String _name = '';
   String _email = '';
-  String _phone = '';
+  final String _phone = '';
   String _password = '';
-  String _confirmPassword = '';
   UserRole _selectedRole = UserRole.student;
+  bool _passwordVisible = false;
   bool _isLoading = false;
 
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_password.trim().isEmpty) return;
+  Future<StudentPassengerMock?> _ensureStudentCreatedForPicker(String? parentId) async {
+    final cleanName = _name.trim().isNotEmpty ? _name.trim() : 'Nuevo Estudiante';
+    try {
+      final studentService = context.read<StudentService>();
+      final busService = context.read<BusService>();
 
-    if (_password != _confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Las contraseñas no coinciden. Por favor verifícalas.'),
-          backgroundColor: SmartColors.smartRed,
-        ),
+      if (parentId != null && parentId.isNotEmpty) {
+        final existing = await studentService.getStudentsByParent(parentId);
+        if (existing.isNotEmpty) return existing.first;
+      }
+
+      final buses = await busService.getAllBuses();
+      final availableBus = buses.where((b) => b.hasAvailableSeats).firstOrNull ??
+          buses.firstOrNull;
+      if (availableBus == null) return null;
+
+      return await studentService.enrollStudent(
+        name: cleanName,
+        parentName: '$cleanName (Tutor)',
+        parentPhone: _phone.trim().isNotEmpty ? _phone.trim() : '+507 6000-0000',
+        pickupAddress: 'Penonomé, Coclé',
+        bus: availableBus,
+        schoolName: availableBus.schoolName ?? 'Colegio Ángel María Herrera',
+        parentId: parentId,
+        pickupLatitude: AppConstants.penonomeCenter.latitude,
+        pickupLongitude: AppConstants.penonomeCenter.longitude,
       );
-      return;
+    } catch (e) {
+      debugPrint('Error creando estudiante en registro: $e');
+      return null;
     }
+  }
 
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate() || _password.trim().isEmpty) return;
     _formKey.currentState!.save();
+
     setState(() {
       _isLoading = true;
     });
@@ -60,35 +87,68 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (response.user != null) {
+        if (_selectedRole == UserRole.student) {
+          final createdStudent =
+              await _ensureStudentCreatedForPicker(response.user!.id);
+          if (!mounted) return;
+          if (createdStudent != null) {
+            await StudentLocationPickerScreen.open(
+              context,
+              student: createdStudent,
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Cuenta creada, pero no se pudo matricular automáticamente al estudiante en un autobús. Complétalo en Editar Perfil.',
+                ),
+                backgroundColor: SmartColors.smartRed,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+          if (!mounted) return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               '¡Credenciales creadas para ${_selectedRole.displayName}! Ya puedes iniciar sesión.',
             ),
-            backgroundColor: SmartColors.smartGreen,
+            backgroundColor: SmartColors.deepBlue,
             duration: const Duration(seconds: 3),
           ),
         );
         context.pop();
-      } else {
+        return;
+      }
+      throw StateError('No se pudo registrar el usuario en Supabase.');
+    } catch (e) {
+      debugPrint('Error en Supabase signUp: $e');
+      if (mounted) {
+        final raw = e.toString();
+        final String msg;
+        if (raw.contains('SocketException') ||
+            raw.contains('Connection refused') ||
+            raw.contains('54321') ||
+            raw.contains('TimeoutException')) {
+          msg =
+              'Sin conexión con Supabase (127.0.0.1:54321). Verifica Docker o ejecuta: adb reverse tcp:54321 tcp:54321.';
+        } else if (raw.contains('already registered') ||
+            raw.contains('user_already_exists') ||
+            raw.contains('422') ||
+            raw.contains('409')) {
+          msg = 'Ya existe una cuenta registrada con ese correo electrónico.';
+        } else {
+          msg = 'No se pudo crear la cuenta: $e';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo completar el registro. Verifica los datos e intenta de nuevo.'),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: SmartColors.smartRed,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
-    } catch (e) {
-      if (!mounted) return;
-      debugPrint('Aviso Supabase register: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Aviso Supabase: $e. Registrando en modo demo local.'),
-          backgroundColor: SmartColors.deepBlue,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-      context.pop();
     } finally {
       if (mounted) {
         setState(() {
@@ -120,7 +180,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             padding: EdgeInsets.zero,
             isPill: true,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, size: 18, color: SmartColors.deepBlack),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                size: 18,
+                color: SmartColors.deepBlack,
+              ),
               onPressed: () => context.pop(),
             ),
           ),
@@ -159,68 +223,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 28),
 
                     // Selector de Rol tipo Quivox Segmented Pill
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: SmartColors.neuInset,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        children: UserRole.values.map((role) {
-                          final isSelected = _selectedRole == role;
-                          return Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _selectedRole = role),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? SmartColors.deepBlack : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                                            offset: const Offset(0, 3),
-                                            blurRadius: 8,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  role == UserRole.student
-                                      ? 'PADRE'
-                                      : role == UserRole.driver
-                                          ? 'CHOFER'
-                                          : 'DUEÑO',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.8,
-                                    color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                    ContinuousTabs<UserRole>(
+                      selected: _selectedRole,
+                      onChanged: (role) => setState(() => _selectedRole = role),
+                      tabs: const [
+                        ContinuousTabItem(value: UserRole.student, label: 'PADRE'),
+                        ContinuousTabItem(value: UserRole.driver, label: 'CHOFER'),
+                        ContinuousTabItem(value: UserRole.owner, label: 'DUEÑO'),
+                      ],
                     ),
                     const SizedBox(height: 24),
-                    
+
                     CustomTextField(
                       label: 'Nombre Completo',
                       hint: 'Ej. Roberto Morales',
                       prefixIcon: Icons.badge_outlined,
                       validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'El nombre es requerido';
+                        if (val == null || val.trim().isEmpty) {
+                          return 'El nombre es requerido';
+                        }
                         return null;
                       },
                       onChanged: (val) => _name = val,
                     ),
                     const SizedBox(height: 16),
-                    
+
                     CustomTextField(
                       label: 'Correo Electrónico',
                       hint: 'correo@ejemplo.com',
@@ -232,21 +259,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 16),
 
                     CustomTextField(
-                      label: 'Teléfono / Móvil (opcional)',
-                      hint: '+57 300 123 4567',
-                      prefixIcon: Icons.phone_android_rounded,
-                      keyboardType: TextInputType.phone,
-                      onChanged: (val) => _phone = val,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    CustomTextField(
                       label: 'Contraseña de Seguridad',
                       hint: '••••••••',
                       prefixIcon: Icons.lock_outline_rounded,
-                      isPassword: true,
+                      isPassword: !_passwordVisible,
                       validator: Validators.validatePassword,
                       onChanged: (val) => _password = val,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _passwordVisible
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                          color: SmartColors.deepBlue,
+                          size: 20,
+                        ),
+                        onPressed: () =>
+                            setState(() => _passwordVisible = !_passwordVisible),
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -265,8 +294,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 32),
 
                     PrimaryButton(
-                      text: _isLoading ? 'CREANDO REGISTRO...' : 'COMPLETAR REGISTRO',
-                      icon: _isLoading ? Icons.hourglass_top_rounded : Icons.check_circle_outline_rounded,
+                      text: _isLoading ? 'CREANDO CUENTA...' : 'COMPLETAR REGISTRO',
+                      icon: Icons.check_circle_outline_rounded,
                       enabled: !_isLoading,
                       onPressed: _register,
                     ),

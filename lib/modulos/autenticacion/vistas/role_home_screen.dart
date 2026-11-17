@@ -5,6 +5,7 @@ import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.d
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 
 class RoleHomeScreen extends StatelessWidget {
@@ -161,7 +162,12 @@ class RoleHomeScreen extends StatelessWidget {
                         PrimaryButton(
                           text: 'ENTRAR AL PANEL PRINCIPAL',
                           icon: Icons.dashboard_rounded,
-                          onPressed: () => onNavigateToRoleHome(session.role),
+                          onPressed: () async {
+                            await GpsPermissionHelper.ensureLocationReady(context);
+                            if (context.mounted) {
+                              onNavigateToRoleHome(session.role);
+                            }
+                          },
                         ),
                         const SizedBox(height: 14),
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/route_card.dart';
@@ -20,6 +22,29 @@ class RoutesScreen extends StatefulWidget {
 class _RoutesScreenState extends State<RoutesScreen> {
   String searchQuery = "";
   String selectedFilter = "Todas";
+  List<RouteMock> _routes = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoutes();
+  }
+
+  Future<void> _loadRoutes() async {
+    try {
+      final routes = await context.read<BusService>().getAllRoutes();
+      if (mounted) {
+        setState(() {
+          _routes = routes;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando rutas: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Widget _buildFilterChip(String label) {
     final isSelected = selectedFilter == label;
@@ -67,11 +92,12 @@ class _RoutesScreenState extends State<RoutesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredRoutes = MockData.routes.where((route) {
+    final filteredRoutes = _routes.where((route) {
       final matchesSearch = route.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          route.destination.toLowerCase().contains(searchQuery.toLowerCase());
+          route.destination.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          route.code.toLowerCase().contains(searchQuery.toLowerCase());
       final matchesFilter = switch (selectedFilter) {
-        "Activas" => route.status == "Activa",
+        "Activas" => route.status == "En recorrido" || route.status == "Disponible" || route.status == "Activa",
         "Favoritas" => route.isFavorite,
         _ => true,
       };
@@ -181,12 +207,14 @@ class _RoutesScreenState extends State<RoutesScreen> {
                 ),
               ),
               Expanded(
-                child: filteredRoutes.isEmpty
-                    ? const EmptyState(
-                        message: 'No se encontraron rutas',
-                        subMessage: 'Intenta con otro término o filtro de búsqueda.',
-                        icon: Icons.alt_route_rounded,
-                      )
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: SmartColors.deepBlue))
+                    : filteredRoutes.isEmpty
+                        ? const EmptyState(
+                            message: 'No se encontraron rutas',
+                            subMessage: 'Intenta con otro término o filtro de búsqueda.',
+                            icon: Icons.alt_route_rounded,
+                          )
                     : LayoutBuilder(
                         builder: (context, constraints) {
                           final bool isWide = constraints.maxWidth >= 720;

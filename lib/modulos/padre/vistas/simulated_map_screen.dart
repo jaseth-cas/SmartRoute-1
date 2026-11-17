@@ -8,9 +8,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/constantes/app_constants.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/student_bottom_bar.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
@@ -31,11 +32,16 @@ class SimulatedMapScreen extends StatefulWidget {
 
 class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
   String lastUpdate = "Conectando GPS...";
-  bool isUpdating = false;
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
-  String _activeTab = 'Tracking'; // 'Tracking', 'Analytics', 'Detalles'
+  bool isUpdating = false;
+  String _activeTab = 'Tracking'; // 'Tracking', 'Colegios', 'Analytics', 'Detalles'
+  bool _showSchools = true; // Visibilidad de los puntos rojos de escuelas
+  SchoolLocation? _selectedSchool; // Colegio seleccionado para enfocar o ver ficha
+
+  BusMock? _liveBus;
+  StreamSubscription? _busSub;
 
   // Ruta 1: Desde la Casa del Estudiante hasta la Parada de Recogida (Ruta de acceso en Vía Cristo Rey)
   final List<LatLng> studentWalkPath = const [
@@ -74,9 +80,9 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
       _subscribeToLiveBus();
     });
 
-    // Loop de movimiento de autobús colegial cada 2.5 seg si no hay GPS en vivo
+    // Loop de movimiento de autobús colegial cada 2.5 seg
     loopTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
-      if (!isUpdating && mounted && _liveBus == null) {
+      if (!isUpdating && mounted) {
         setState(() {
           currentPointIndex = (currentPointIndex + 1) % schoolBusPath.length;
         });
@@ -84,27 +90,31 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     });
   }
 
-  void _subscribeToLiveBus() {
+  Future<void> _subscribeToLiveBus() async {
     try {
       final busService = context.read<BusService>();
-      final busCode = widget.routeCode.startsWith('BUS') ? widget.routeCode : 'BUS-01';
+      final busCode = busService.normalizeBusCode(widget.routeCode);
+      final effectiveCode = busCode.isNotEmpty ? busCode : 'BUS-01';
 
-      _busSub = busService.streamBusByCode(busCode).listen((bus) {
+      final fetchedBus = await busService.getBusByCode(effectiveCode);
+      if (mounted) {
+        setState(() {
+          _liveBus = fetchedBus;
+        });
+      }
+
+      _busSub = busService.streamBusByCode(effectiveCode).listen((bus) {
         if (bus != null && mounted) {
           setState(() {
             _liveBus = bus;
             lastUpdate = "GPS en vivo (Satelital)";
           });
-          if (bus.latitude != null && bus.longitude != null) {
-            _mapController.move(LatLng(bus.latitude!, bus.longitude!), _mapController.camera.zoom);
-          }
         }
       });
     } catch (e) {
       debugPrint('Aviso suscribiendo a bus en vivo: $e');
     }
   }
-
   @override
   void dispose() {
     _busSub?.cancel();
@@ -112,24 +122,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     super.dispose();
   }
 
-  Future<void> _determinePosition() async {
+  Future<void> _determinePosition({bool showPrompt = false}) async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) setState(() => _isLoadingLocation = false);
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) setState(() => _isLoadingLocation = false);
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
+      final gpsReady = await GpsPermissionHelper.ensureLocationReady(
+        context,
+        showPromptIfDisabled: showPrompt,
+      );
+      if (!gpsReady) {
         if (mounted) setState(() => _isLoadingLocation = false);
         return;
       }
@@ -142,7 +141,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         });
         _mapController.move(_currentPosition!, _currentZoom);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Aviso obteniendo ubicación en mapa de padre: $e');
       if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
@@ -165,8 +165,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     } catch (e) {
       debugPrint('Error sincronizando bus: $e');
     }
-    await _determinePosition();
-    await Future.delayed(const Duration(milliseconds: 400));
+    await _determinePosition(showPrompt: true);
     if (mounted) {
       setState(() => isUpdating = false);
     }
@@ -193,10 +192,17 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     _mapController.move(busPos, 16.2);
   }
 
+  void _openBusLiveCameraModal(dynamic bus) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _BusLiveCameraDialog(bus: bus),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final route = MockData.getRouteByCode(widget.routeCode);
-    final bus = MockData.getBusByCode(route?.busCode ?? "BUS-01");
+    final bus = _liveBus;
 
     return PopScope(
       canPop: context.canPop(),
@@ -255,6 +261,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                             ),
                           ),
                         _buildMapFloatingControls(),
+                        if (_selectedSchool != null)
+                          Positioned(
+                            bottom: 24,
+                            left: 24,
+                            right: 24,
+                            child: _buildSelectedSchoolOverlay(),
+                          ),
                       ],
                     ),
                   ),
@@ -284,6 +297,13 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                     ),
                   ),
                   _buildMapFloatingControls(isMobile: true),
+                  if (_selectedSchool != null)
+                    Positioned(
+                      top: 72,
+                      left: 16,
+                      right: 16,
+                      child: _buildSelectedSchoolOverlay(),
+                    ),
                   DraggableScrollableSheet(
                     initialChildSize: 0.40,
                     minChildSize: 0.16,
@@ -337,9 +357,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
   // Mapa Interactivo con Rutas en Vivo Conectadas (Casa de Estudiante -> Parada -> Escuela)
   Widget _buildMapView(dynamic bus) {
-    final LatLng busPos = (_liveBus?.latitude != null && _liveBus?.longitude != null)
-        ? LatLng(_liveBus!.latitude!, _liveBus!.longitude!)
-        : schoolBusPath[currentPointIndex];
+    final busPos = schoolBusPath[currentPointIndex];
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return FlutterMap(
       mapController: _mapController,
@@ -389,39 +408,42 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             // Marcador 1: Casa del Estudiante (Punto de Origen)
             Marker(
               point: studentWalkPath.first,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "CASA DE MATEO",
                 subtitle: "Salida 06:45 AM",
                 icon: Icons.home_rounded,
                 pinColor: SmartColors.primaryCrimson,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 2: Parada de Recogida (Punto de Conexión en Vía hacia Sonadora)
             Marker(
               point: studentWalkPath.last,
-              width: 140,
-              height: 56,
+              width: isMobile ? 30 : 140,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "PARADA ASIGNADA",
                 subtitle: "Vía Sonadora // 07:05 AM",
                 icon: Icons.directions_bus_rounded,
                 pinColor: SmartColors.deepBlue,
+                isMobile: isMobile,
               ),
             ),
 
             // Marcador 3: Colegio San José (Destino Escolar)
             Marker(
               point: schoolBusPath.last,
-              width: 130,
-              height: 56,
+              width: isMobile ? 30 : 130,
+              height: isMobile ? 30 : 56,
               child: _buildLocationPin(
                 title: "COLEGIO SAN JOSÉ",
                 subtitle: "Llegada 07:20 AM",
                 icon: Icons.school_rounded,
                 pinColor: SmartColors.smartGreen,
+                isMobile: isMobile,
               ),
             ),
 
@@ -448,6 +470,18 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 bgColor: SmartColors.deepBlue,
               ),
             ),
+
+            // Marcadores de los 9 Colegios y Escuelas de Penonomé mapeados con Punto Rojo
+            if (_showSchools)
+              ...AppConstants.penonomeSchools.map((school) {
+                final isSelected = _selectedSchool?.id == school.id;
+                return Marker(
+                  point: LatLng(school.latitude, school.longitude),
+                  width: 140,
+                  height: 52,
+                  child: _buildSchoolRedPointMarker(school, isSelected: isSelected),
+                );
+              }),
           ],
         ),
       ],
@@ -486,6 +520,21 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           NeumorphicBox(
             isPill: true,
             padding: const EdgeInsets.all(12),
+            onTap: () {
+              setState(() {
+                _showSchools = !_showSchools;
+              });
+            },
+            child: Icon(
+              Icons.school_rounded,
+              size: 20,
+              color: _showSchools ? SmartColors.primaryCrimson : SmartColors.smartGray,
+            ),
+          ),
+          const SizedBox(height: 10),
+          NeumorphicBox(
+            isPill: true,
+            padding: const EdgeInsets.all(12),
             onTap: _syncData,
             child: isUpdating
                 ? const SizedBox(
@@ -494,6 +543,15 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: SmartColors.deepBlue),
                   )
                 : const Icon(Icons.my_location_rounded, size: 20, color: SmartColors.deepBlue),
+          ),
+          const SizedBox(height: 10),
+          NeumorphicBox(
+            isPill: true,
+            padding: const EdgeInsets.all(12),
+            onTap: () {
+              _openBusLiveCameraModal(_liveBus);
+            },
+            child: const Icon(Icons.videocam_rounded, size: 20, color: SmartColors.primaryCrimson),
           ),
         ],
       ),
@@ -673,13 +731,15 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
         const SizedBox(height: 20),
 
-        // Selector de Pestañas: Tracking, Analytics, Detalles
+        // Selector de Pestañas: Tracking, Colegios, Analytics, Detalles
         Row(
           children: [
             _buildTabPill('Tracking'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            _buildTabPill('Colegios'),
+            const SizedBox(width: 6),
             _buildTabPill('Analytics'),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildTabPill('Detalles'),
           ],
         ),
@@ -690,6 +750,11 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         if (_activeTab == 'Tracking') ...[
           // Tarjeta de la Unidad / Bus Escolar
           _buildBusVehicleCard(bus),
+
+          const SizedBox(height: 16),
+
+          // Selector rápido de Colegios de Penonomé
+          _buildQuickSchoolsRow(),
 
           const SizedBox(height: 18),
 
@@ -705,6 +770,8 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           ),
           const SizedBox(height: 12),
           _buildStopTimeline(),
+        ] else if (_activeTab == 'Colegios') ...[
+          _buildPenonomeSchoolsView(),
         ] else if (_activeTab == 'Analytics') ...[
           _buildAnalyticsView(bus),
         ] else ...[
@@ -810,7 +877,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
         onTap: () => setState(() => _activeTab = title),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
           decoration: BoxDecoration(
             color: isSelected ? SmartColors.deepBlack : SmartColors.neuInset,
             borderRadius: BorderRadius.circular(14),
@@ -828,10 +895,14 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
           child: Text(
             title,
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
+              fontSize: title == 'Colegios' ? 10.5 : 11,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? SmartColors.vibrantCyan : SmartColors.smartGray,
+              color: isSelected
+                  ? (title == 'Colegios' ? SmartColors.primaryCrimson : SmartColors.vibrantCyan)
+                  : SmartColors.smartGray,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -972,7 +1043,7 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
 
           const SizedBox(height: 10),
 
-          // Barra de Métricas Técnicas (RANGE | MILEAGE | REMAINING)
+          // Ficha del Vehículo y Conductor (Placa | Modelo | Conductor)
           NeumorphicBox(
             isInset: true,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -981,9 +1052,10 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
               children: [
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'AUTONOMÍA',
-                    subLabel: 'RANGE',
-                    value: '326 KM',
+                    label: 'PLACA',
+                    subLabel: 'MATRÍCULA',
+                    value: bus?.plate ?? 'Sin placa',
+                    icon: Icons.confirmation_number_outlined,
                   ),
                 ),
                 Container(
@@ -993,9 +1065,10 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 ),
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'KILOMETRAJE',
-                    subLabel: 'MILEAGE',
-                    value: '12 683 KM',
+                    label: 'MODELO',
+                    subLabel: 'VEHÍCULO',
+                    value: bus?.model ?? 'Toyota HiAce',
+                    icon: Icons.directions_bus_outlined,
                   ),
                 ),
                 Container(
@@ -1005,10 +1078,102 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
                 ),
                 Expanded(
                   child: _buildMetricCol(
-                    label: 'COMBUSTIBLE',
-                    subLabel: 'REMAINING',
-                    value: '65 L (82%)',
+                    label: 'CONDUCTOR',
+                    subLabel: 'OPERADOR',
+                    value: bus?.driverName ?? 'Juan Pérez',
+                    icon: Icons.person_outline_rounded,
                   ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Botón para Transmisión en Vivo de Cámara Interna del Busito
+          NeumorphicBox(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => _openBusLiveCameraModal(bus),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.videocam_rounded,
+                    color: SmartColors.primaryCrimson,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'CÁMARA INTERNA',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: SmartColors.primaryCrimson,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 4,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'LIVE',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Ver situación en vivo dentro del busito',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: SmartColors.smartGray,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: SmartColors.deepBlue,
                 ),
               ],
             ),
@@ -1116,25 +1281,43 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     required String label,
     required String subLabel,
     required String value,
+    IconData? icon,
   }) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          subLabel,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 7.5,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            color: SmartColors.smartGray,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 9.5, color: SmartColors.smartGray),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              subLabel,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 7.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: SmartColors.smartGray,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            color: SmartColors.deepBlack,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: SmartColors.deepBlack,
+            ),
           ),
         ),
         const SizedBox(height: 1),
@@ -1569,7 +1752,32 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     required String subtitle,
     required IconData icon,
     required Color pinColor,
+    bool isMobile = false,
   }) {
+    if (isMobile) {
+      return Tooltip(
+        message: '$title • $subtitle',
+        triggerMode: TooltipTriggerMode.tap,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: pinColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.2),
+            boxShadow: [
+              BoxShadow(
+                color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 15, color: Colors.white),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1630,6 +1838,462 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
     );
   }
 
+  // Marcador con Punto Rojo y etiqueta para los Colegios de Penonomé
+  Widget _buildSchoolRedPointMarker(SchoolLocation school, {bool isSelected = false}) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedSchool = school;
+        });
+        _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Píldora identificadora con el nombre del colegio
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: isSelected ? SmartColors.deepBlack : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: SmartColors.primaryCrimson,
+                width: isSelected ? 1.8 : 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: SmartColors.primaryCrimson.withValues(alpha: isSelected ? 0.35 : 0.20),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5.5,
+                  height: 5.5,
+                  decoration: const BoxDecoration(
+                    color: SmartColors.primaryCrimson,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    school.shortName,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          // Punto Rojo (con halo translúcido y relieve blanco)
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson.withValues(alpha: 0.25),
+                ),
+              ),
+              Container(
+                width: 13,
+                height: 13,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: SmartColors.primaryCrimson,
+                  border: Border.all(color: Colors.white, width: 2.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SmartColors.primaryCrimson.withValues(alpha: 0.65),
+                      blurRadius: 5,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Ficha flotante sobre el mapa cuando un colegio está seleccionado
+  Widget _buildSelectedSchoolOverlay() {
+    final school = _selectedSchool!;
+    return NeumorphicBox(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      borderRadius: BorderRadius.circular(20),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: SmartColors.primaryCrimson.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: SmartColors.primaryCrimson, width: 1.5),
+            ),
+            child: const Center(
+              child: Icon(Icons.school_rounded, color: SmartColors.primaryCrimson, size: 18),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: SmartColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'PUNTO ROJO // PENONOMÉ',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.primaryCrimson,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  school.name,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  school.address,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: SmartColors.smartGray,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () {
+              _mapController.move(LatLng(school.latitude, school.longitude), 17.2);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: SmartColors.deepBlack,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.my_location_rounded, size: 14, color: SmartColors.vibrantCyan),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => setState(() => _selectedSchool = null),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: SmartColors.neuInset,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close_rounded, size: 16, color: SmartColors.smartGray),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fila de chips rápidos para los 9 Colegios de Penonomé (Pestaña Tracking)
+  Widget _buildQuickSchoolsRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'COLEGIOS DE PENONOMÉ (9)',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                color: SmartColors.smartGray,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _activeTab = 'Colegios'),
+              child: Text(
+                'VER LISTA >',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: SmartColors.primaryCrimson,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: AppConstants.penonomeSchools.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final school = AppConstants.penonomeSchools[index];
+              final isSelected = _selectedSchool?.id == school.id;
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedSchool = school);
+                  _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? SmartColors.deepBlack : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? SmartColors.primaryCrimson : const Color(0xFFE2E8F0),
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: SmartColors.primaryCrimson,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        school.shortName,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Vista completa de los 9 Colegios de Penonomé en el Panel Telemático
+  Widget _buildPenonomeSchoolsView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'COLEGIOS DE PENONOMÉ',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '9 instituciones mapeadas',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+              ],
+            ),
+            GestureDetector(
+              onTap: () {
+                _mapController.move(const LatLng(8.5135, -80.3530), 14.3);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: SmartColors.deepBlack,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.zoom_out_map_rounded, size: 14, color: SmartColors.vibrantCyan),
+                    const SizedBox(width: 6),
+                    Text(
+                      'VER TODOS',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: SmartColors.ghostWhite,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // Lista de instituciones
+        ...AppConstants.penonomeSchools.map((school) {
+          final isSelected = _selectedSchool?.id == school.id;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _selectedSchool = school);
+                _mapController.move(LatLng(school.latitude, school.longitude), 16.8);
+              },
+              child: NeumorphicBox(
+                padding: const EdgeInsets.all(14),
+                borderRadius: BorderRadius.circular(18),
+                isInset: isSelected,
+                child: Row(
+                  children: [
+                    // Punto rojo identificador con halo
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: SmartColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: SmartColors.primaryCrimson.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            school.name,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: SmartColors.deepBlack,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            school.address,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: SmartColors.smartGray,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: SmartColors.neuInset,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              school.type,
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: SmartColors.deepBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: isSelected ? SmartColors.primaryCrimson : SmartColors.ghostWhite,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? SmartColors.primaryCrimson
+                              : SmartColors.neuDarkShadow.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.my_location_rounded,
+                        size: 15,
+                        color: isSelected ? Colors.white : SmartColors.deepBlack,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   // Chip Flotante de Estado en Ruta (como en la foto de referencia)
   Widget _buildFloatingStatusChip({
     required String text,
@@ -1663,6 +2327,615 @@ class _SimulatedMapScreenState extends State<SimulatedMapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Diálogo Modal de Conexión y Visualización de Cámara Interna del Autobús Colegial
+class _BusLiveCameraDialog extends StatefulWidget {
+  final dynamic bus;
+
+  const _BusLiveCameraDialog({required this.bus});
+
+  @override
+  State<_BusLiveCameraDialog> createState() => _BusLiveCameraDialogState();
+}
+
+class _BusLiveCameraDialogState extends State<_BusLiveCameraDialog> {
+  bool _isConnecting = true;
+  double _connectionProgress = 0.25;
+  String _statusText = 'Iniciando enlace satelital 4G con el busito...';
+  String _stepText = 'Paso 1 de 3: Calibrando telemetría remota';
+  int _activeCamIndex = 0;
+  bool _isMuted = false;
+  Timer? _clockTimer;
+  String _liveClock = '';
+
+  final List<String> _cameraAngles = [
+    'CAM-01 [PASILLO CENTRAL]',
+    'CAM-02 [PUERTA DE ACCESO]',
+    'CAM-03 [CABINA CONDUCTOR]',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _updateClock();
+    _startSimulatedConnection();
+  }
+
+  void _updateClock() {
+    final now = DateTime.now();
+    _liveClock =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+  }
+
+  void _startSimulatedConnection() {
+    // Paso 1: Enlace en progreso
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 0.60;
+        _statusText = 'Verificando túnel de video seguro y permisos telemáticos...';
+        _stepText = 'Paso 2 de 3: Autenticando canal cifrado';
+      });
+    });
+
+    // Paso 2: Sincronizando streaming
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 0.90;
+        _statusText = 'Sincronizando transmisión en directo con la cabina escolar...';
+        _stepText = 'Paso 3 de 3: Conexión establecida con éxito';
+      });
+    });
+
+    // Paso 3: Conectado a la cámara interior
+    Future.delayed(const Duration(milliseconds: 2300), () {
+      if (!mounted) return;
+      setState(() {
+        _connectionProgress = 1.0;
+        _isConnecting = false;
+      });
+
+      _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() => _updateClock());
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isConnecting) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: NeumorphicBox(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          borderRadius: BorderRadius.circular(26),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header badge telemático
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: SmartColors.deepBlack,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: SmartColors.vibrantCyan,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'SMARTROUTE EYE // TELEMETRÍA',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                          color: SmartColors.ghostWhite,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Radar animado con ícono de cámara y progreso
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 90,
+                      height: 90,
+                      child: CircularProgressIndicator(
+                        value: _connectionProgress,
+                        strokeWidth: 4.5,
+                        backgroundColor: SmartColors.neuInset,
+                        valueColor: const AlwaysStoppedAnimation<Color>(SmartColors.vibrantCyan),
+                      ),
+                    ),
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: SmartColors.deepBlue.withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.videocam_rounded,
+                        size: 32,
+                        color: SmartColors.primaryCrimson,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 22),
+
+                Text(
+                  'Conectando con el bus ${widget.bus?.code ?? 'BUS-01'}...',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: SmartColors.deepBlack,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: SmartColors.neuInset,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'PLACA: ${widget.bus?.plate ?? '--'}  •  MODELO: ${widget.bus?.model ?? 'Unidad escolar'}  •  CONDUCTOR: ${widget.bus?.driverName ?? 'Sin asignar'}',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: SmartColors.deepBlue,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Text(
+                  _statusText,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: _connectionProgress,
+                    minHeight: 6,
+                    backgroundColor: SmartColors.neuInset,
+                    valueColor: const AlwaysStoppedAnimation<Color>(SmartColors.vibrantCyan),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  _stepText,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: SmartColors.smartGray,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                NeumorphicBox(
+                  isPill: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancelar enlace',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: SmartColors.primaryCrimson,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Vista Conectada: Transmisión en Tiempo Real de la Cámara Interior
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: NeumorphicBox(
+        padding: const EdgeInsets.all(18),
+        borderRadius: BorderRadius.circular(26),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 780),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Barra superior: Estado en vivo, Identificación y Botón de cierre
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SmartColors.primaryCrimson,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'EN VIVO',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '${widget.bus?.code ?? 'SIN BUS'} • ${widget.bus?.model ?? 'Unidad Escolar'} [${widget.bus?.plate ?? '--'}]',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: SmartColors.deepBlack,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SmartColors.neuInset,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time_rounded, size: 12, color: SmartColors.deepBlue),
+                            const SizedBox(width: 4),
+                            Text(
+                              _liveClock,
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: SmartColors.deepBlack,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      NeumorphicBox(
+                        isPill: true,
+                        padding: const EdgeInsets.all(8),
+                        onTap: () => Navigator.of(context).pop(),
+                        child: const Icon(Icons.close_rounded, size: 18, color: SmartColors.deepBlack),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // Monitor de Video CCTV Interior del Autobús
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  color: Colors.black,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Imagen de seguridad interior realista
+                        Image.asset(
+                          'assets/images/bus_interior_cctv.jpg',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: SmartColors.deepBlack,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.videocam_rounded, color: SmartColors.vibrantCyan, size: 48),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Transmisión en directo en línea',
+                                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                        // Gradiente de contraste para datos HUD
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.65),
+                                Colors.transparent,
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.75),
+                              ],
+                              stops: const [0.0, 0.22, 0.78, 1.0],
+                            ),
+                          ),
+                        ),
+
+                        // HUD Superior de Grabación y Cámara
+                        Positioned(
+                          top: 12,
+                          left: 14,
+                          right: 14,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'REC [HD 1080p 30fps]',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.white24, width: 0.8),
+                                ),
+                                child: Text(
+                                  _cameraAngles[_activeCamIndex],
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: SmartColors.vibrantCyan,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // HUD Inferior con Conductor, Velocidad y Estado
+                        Positioned(
+                          bottom: 12,
+                          left: 14,
+                          right: 14,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'COND: ${widget.bus?.driverName ?? 'Juan Pérez'} // CABINA SEGURA',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'ESTUDIANTES: ${widget.bus?.seatsOccupied ?? 8} / ${widget.bus?.capacity ?? 14}  •  VELOCIDAD: 38 KM/H',
+                                    style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: SmartColors.vibrantCyan,
+                                      shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: SmartColors.smartGreen.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_circle_outline_rounded, size: 12, color: Colors.white),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'SITUACIÓN NORMAL',
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Controles: Conmutador de ángulos de cámara y audio
+              Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: List.generate(_cameraAngles.length, (index) {
+                        final isSelected = _activeCamIndex == index;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => _activeCamIndex = index);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Conmutando a ${_cameraAngles[index]}',
+                                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                                ),
+                                duration: const Duration(seconds: 1),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: SmartColors.deepBlack,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected ? SmartColors.deepBlack : SmartColors.neuInset,
+                              borderRadius: BorderRadius.circular(10),
+                              border: isSelected
+                                  ? Border.all(color: SmartColors.vibrantCyan, width: 1.2)
+                                  : null,
+                            ),
+                            child: Text(
+                              _cameraAngles[index].replaceAll(RegExp(r'\[.*\]'), '').trim(),
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                color: isSelected ? SmartColors.vibrantCyan : SmartColors.deepBlack,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  NeumorphicBox(
+                    isPill: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    onTap: () {
+                      setState(() => _isMuted = !_isMuted);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _isMuted ? 'Micrófono de cabina silenciado' : 'Micrófono de cabina en vivo activado',
+                            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+                          ),
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: SmartColors.deepBlack,
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                          size: 16,
+                          color: _isMuted ? SmartColors.primaryCrimson : SmartColors.deepBlue,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isMuted ? 'MUTE' : 'AUDIO',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: SmartColors.deepBlack,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

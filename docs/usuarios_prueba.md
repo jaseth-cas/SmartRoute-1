@@ -12,9 +12,10 @@ Este documento contiene las cuentas fijas y determinísticas del entorno de desa
 | Rol en el Sistema | Nombre del Usuario | Correo Electrónico | Contraseña | Pantalla Inicial | UUID Fijo |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **🏢 Dueño de Flota (Transportista)** | Don Fernando Gómez | `dueno@smartroute.com` | `Password123!` | `/owner_home` | `a0000000-0000-0000-0000-000000000001` |
-| **👨‍✈️ Conductor Escolar** | Carlos Andrés Gómez | `conductor@smartroute.com` | `Password123!` | `/driver_home` | `b0000000-0000-0000-0000-000000000002` |
-| **👨‍👩‍👦 Padre / Tutor (Mateo)** | Carlos Gómez | `padre@smartroute.com` | `Password123!` | `/student_home` | `c0000000-0000-0000-0000-000000000003` |
-| **👩‍👧 Madre / Tutora (Sofía)** | Elena Ramírez | `padre2@smartroute.com` | `Password123!` | `/student_home` | `c0000000-0000-0000-0000-000000000004` |
+| **👨‍✈️ Conductor Escolar 1 (`BUS-01`)** | Carlos Andrés Gómez | `conductor@smartroute.com` | `Password123!` | `/driver_welcome_splash` | `b0000000-0000-0000-0000-000000000002` |
+| **👨‍✈️ Conductor Escolar 2 (`BUS-02`)** | Luis Alberto Mendoza | `conductor2@smartroute.com` | `Password123!` | `/driver_welcome_splash` | `b0000000-0000-0000-0000-000000000005` |
+| **👨‍👩‍👦 Padre / Tutor 1 (`BUS-01`)** | Carlos Gómez | `padre1@smartroute.com` | `Password123!` | `/student_home` | `c0000000-0000-0000-0000-000000000003` |
+| **👩‍👧 Madre / Tutora 2 (`BUS-02`)** | Elena Ramírez | `padre2@smartroute.com` | `Password123!` | `/student_home` | `c0000000-0000-0000-0000-000000000004` |
 
 ---
 

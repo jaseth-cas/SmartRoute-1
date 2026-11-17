@@ -34,9 +34,9 @@ class FakeJwtProvider {
       case UserRole.student:
         return JwtSession(
           token: "fake.jwt.student.token",
-          userId: "1",
-          name: customName ?? "Carlos Gómez (Tutor)",
-          email: "carlos.gomez@smartroute.com",
+          userId: "c0000000-0000-0000-0000-000000000003",
+          name: customName ?? "Padre de Familia",
+          email: "padre1@smartroute.com",
           role: UserRole.student,
           issuedAt: issuedAt,
           expiresAt: expiresAt,
@@ -44,9 +44,9 @@ class FakeJwtProvider {
       case UserRole.driver:
         return JwtSession(
           token: "fake.jwt.driver.token",
-          userId: "3",
-          name: customName ?? "Juan Pérez",
-          email: "juan.conductor@smartroute.com",
+          userId: "b0000000-0000-0000-0000-000000000002",
+          name: customName ?? "Conductor Principal",
+          email: "conductor@smartroute.com",
           role: UserRole.driver,
           issuedAt: issuedAt,
           expiresAt: expiresAt,
@@ -54,9 +54,9 @@ class FakeJwtProvider {
       case UserRole.owner:
         return JwtSession(
           token: "fake.jwt.owner.token",
-          userId: "4",
-          name: customName ?? "Transportes Gómez (Escolar)",
-          email: "transportes.gomez@smartroute.com",
+          userId: "a0000000-0000-0000-0000-000000000001",
+          name: customName ?? "Transportista Penonomé",
+          email: "dueno@smartroute.com",
           role: UserRole.owner,
           issuedAt: issuedAt,
           expiresAt: expiresAt,
@@ -78,12 +78,6 @@ class SessionManager extends ChangeNotifier {
   void login(UserRole role, {String? customName}) {
     _currentSession = FakeJwtProvider.createSessionForRole(role, customName: customName);
     notifyListeners(); // Notifica a la app para reconstruir la interfaz
-  }
-
-  /// Cambia de rol de forma instantánea entre perfiles
-  void switchRole(UserRole role) {
-    _currentSession = FakeJwtProvider.createSessionForRole(role);
-    notifyListeners();
   }
 
   /// Inicia sesión con credenciales reales verificadas de Supabase
@@ -108,10 +102,31 @@ class SessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cambia de rol de forma instantánea entre perfiles
+  void switchRole(UserRole role) {
+    _currentSession = FakeJwtProvider.createSessionForRole(role);
+    notifyListeners();
+  }
+
   /// Cierra la sesión activa y borra los datos.
   void logout() {
     _currentSession = null;
     notifyListeners(); // Notifica a la app (útil para que GoRouter redirija al Login)
+  }
+
+  /// Actualiza los datos básicos del usuario en la sesión activa sin perder el token ni el rol.
+  void updateUserInfo({String? name, String? email}) {
+    if (_currentSession == null) return;
+    _currentSession = JwtSession(
+      token: _currentSession!.token,
+      userId: _currentSession!.userId,
+      name: (name != null && name.trim().isNotEmpty) ? name.trim() : _currentSession!.name,
+      email: (email != null && email.trim().isNotEmpty) ? email.trim() : _currentSession!.email,
+      role: _currentSession!.role,
+      issuedAt: _currentSession!.issuedAt,
+      expiresAt: _currentSession!.expiresAt,
+    );
+    notifyListeners();
   }
 
   /// Retorna `true` si hay un usuario logueado actualmente.

@@ -28,6 +28,8 @@ class BusMock {
   final String? schoolName;
   final double? latitude;
   final double? longitude;
+  final String? driverId;
+  final String? ownerId;
 
   BusMock({
     required this.id,
@@ -47,9 +49,64 @@ class BusMock {
     this.schoolName,
     this.latitude,
     this.longitude,
+    this.driverId,
+    this.ownerId,
   });
 
+  /// Indica si la unidad escolar aún cuenta con cupos disponibles (RF-05).
+  bool get hasAvailableSeats => seatsOccupied < capacity;
+
+  /// Número de asientos libres disponibles en la unidad.
+  int get availableSeats => (capacity - seatsOccupied).clamp(0, capacity);
+
+  BusMock copyWith({
+    int? id,
+    String? code,
+    String? plate,
+    String? model,
+    int? capacity,
+    int? seatsOccupied,
+    String? status,
+    String? driverName,
+    String? ownerName,
+    String? routeName,
+    bool? simulatedGpsActive,
+    int? currentSpeedKmH,
+    String? lastUpdate,
+    bool? isVerified,
+    String? schoolName,
+    double? latitude,
+    double? longitude,
+    String? driverId,
+    String? ownerId,
+  }) {
+    return BusMock(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      plate: plate ?? this.plate,
+      model: model ?? this.model,
+      capacity: capacity ?? this.capacity,
+      seatsOccupied: seatsOccupied ?? this.seatsOccupied,
+      status: status ?? this.status,
+      driverName: driverName ?? this.driverName,
+      ownerName: ownerName ?? this.ownerName,
+      routeName: routeName ?? this.routeName,
+      simulatedGpsActive: simulatedGpsActive ?? this.simulatedGpsActive,
+      currentSpeedKmH: currentSpeedKmH ?? this.currentSpeedKmH,
+      lastUpdate: lastUpdate ?? this.lastUpdate,
+      isVerified: isVerified ?? this.isVerified,
+      schoolName: schoolName ?? this.schoolName,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      driverId: driverId ?? this.driverId,
+      ownerId: ownerId ?? this.ownerId,
+    );
+  }
+
   factory BusMock.fromMap(Map<String, dynamic> map) {
+    final joinedDriver = map['conductor'] is Map ? map['conductor']['nombre']?.toString() : null;
+    final joinedOwner = map['dueno'] is Map ? map['dueno']['nombre']?.toString() : null;
+
     return BusMock(
       id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
       code: map['codigo'] ?? map['code'] ?? '',
@@ -58,16 +115,18 @@ class BusMock {
       capacity: map['capacidad'] ?? map['capacity'] ?? 16,
       seatsOccupied: map['asientos_ocupados'] ?? map['seatsOccupied'] ?? 0,
       status: map['estado'] ?? map['status'] ?? 'Disponible',
-      driverName: map['conductor_nombre'] ?? map['driverName'] ?? 'Conductor Asignado',
-      ownerName: map['dueno_nombre'] ?? map['ownerName'] ?? 'Transportes Escolar',
+      driverName: joinedDriver ?? map['conductor_nombre'] ?? map['driverName'] ?? 'Sin asignar',
+      ownerName: joinedOwner ?? map['dueno_nombre'] ?? map['ownerName'] ?? 'Transportes Escolar',
       routeName: map['nombre_ruta'] ?? map['routeName'],
       simulatedGpsActive: map['simulatedGpsActive'] ?? true,
       currentSpeedKmH: map['velocidad_kmh'] ?? map['currentSpeedKmH'] ?? 0,
       lastUpdate: 'En vivo',
       isVerified: map['is_verified'] ?? true,
-      schoolName: map['colegio_asignado'] ?? map['schoolName'] ?? 'Colegio San José',
+      schoolName: map['colegio_asignado'] ?? map['schoolName'] ?? 'Colegio Ángel María Herrera',
       latitude: (map['latitud_actual'] ?? map['latitude'])?.toDouble(),
       longitude: (map['longitud_actual'] ?? map['longitude'])?.toDouble(),
+      driverId: map['conductor_id']?.toString() ?? map['driverId']?.toString(),
+      ownerId: map['dueno_id']?.toString() ?? map['ownerId']?.toString(),
     );
   }
 
@@ -264,6 +323,21 @@ class StopMock {
       isFavorite: json['isFavorite'] ?? false,
     );
   }
+
+  factory StopMock.fromMap(Map<String, dynamic> map) {
+    return StopMock(
+      id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
+      routeCode: map['autobus_codigo'] ?? map['routeCode'] ?? 'BUS-01',
+      stopCode: map['codigo'] ?? map['stopCode'] ?? '',
+      name: map['nombre'] ?? map['name'] ?? 'Parada Escolar',
+      reference: map['referencia'] ?? map['reference'] ?? '',
+      order: map['orden'] ?? map['order'] ?? 1,
+      distanceFromStartKm: (map['distancia_km'] as num?)?.toDouble() ?? 0.0,
+      latitude: (map['latitud'] as num?)?.toDouble(),
+      longitude: (map['longitud'] as num?)?.toDouble(),
+      isFavorite: map['is_favorite'] ?? map['isFavorite'] ?? false,
+    );
+  }
 }
 
 class NotificationMock {
@@ -282,6 +356,24 @@ class NotificationMock {
     required this.read,
     required this.type,
   });
+
+  NotificationMock copyWith({
+    int? id,
+    String? title,
+    String? message,
+    String? time,
+    bool? read,
+    String? type,
+  }) {
+    return NotificationMock(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      message: message ?? this.message,
+      time: time ?? this.time,
+      read: read ?? this.read,
+      type: type ?? this.type,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -360,6 +452,7 @@ class StudentPassengerMock {
   final String name;
   final String parentName;
   final String parentPhone;
+  final String? parentId;
   final String schoolName;
   final String pickupAddress;
   final String busCode;
@@ -371,12 +464,15 @@ class StudentPassengerMock {
   final double monthlyFee;
   final String paymentStatus; // "Al día", "Pendiente", "En mora"
   final String? photoAsset;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
 
   StudentPassengerMock({
     required this.id,
     required this.name,
     required this.parentName,
     required this.parentPhone,
+    this.parentId,
     required this.schoolName,
     required this.pickupAddress,
     required this.busCode,
@@ -385,9 +481,11 @@ class StudentPassengerMock {
     required this.status,
     this.lastBoardingTime,
     this.boardingMethod,
-    this.monthlyFee = 65000,
+    this.monthlyFee = 65.0,
     this.paymentStatus = 'Al día',
     this.photoAsset,
+    this.pickupLatitude,
+    this.pickupLongitude,
   });
 
   StudentPassengerMock copyWith({
@@ -395,6 +493,7 @@ class StudentPassengerMock {
     String? name,
     String? parentName,
     String? parentPhone,
+    String? parentId,
     String? schoolName,
     String? pickupAddress,
     String? busCode,
@@ -406,12 +505,15 @@ class StudentPassengerMock {
     double? monthlyFee,
     String? paymentStatus,
     String? photoAsset,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) {
     return StudentPassengerMock(
       id: id ?? this.id,
       name: name ?? this.name,
       parentName: parentName ?? this.parentName,
       parentPhone: parentPhone ?? this.parentPhone,
+      parentId: parentId ?? this.parentId,
       schoolName: schoolName ?? this.schoolName,
       pickupAddress: pickupAddress ?? this.pickupAddress,
       busCode: busCode ?? this.busCode,
@@ -423,6 +525,8 @@ class StudentPassengerMock {
       monthlyFee: monthlyFee ?? this.monthlyFee,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       photoAsset: photoAsset ?? this.photoAsset,
+      pickupLatitude: pickupLatitude ?? this.pickupLatitude,
+      pickupLongitude: pickupLongitude ?? this.pickupLongitude,
     );
   }
 
@@ -453,24 +557,30 @@ class StudentPassengerMock {
     lastBoardingTime = attendanceMap?['hora_abordaje'];
     boardingMethod = attendanceMap?['metodo_abordaje'];
 
+    final rawLat = map['latitud_recogida'] ?? map['latitud'] ?? map['pickupLatitude'];
+    final rawLng = map['longitud_recogida'] ?? map['longitud'] ?? map['pickupLongitude'];
+
     return StudentPassengerMock(
       id: map['id'] is int ? map['id'] : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
       name: map['nombre'] ?? map['name'] ?? '',
       parentName: map['padre_nombre'] ?? map['parentName'] ?? '',
       parentPhone: map['padre_telefono'] ?? map['parentPhone'] ?? '',
-      schoolName: map['colegio'] ?? map['schoolName'] ?? 'Colegio San José',
+      parentId: map['padre_id']?.toString() ?? map['parentId']?.toString(),
+      schoolName: map['colegio'] ?? map['schoolName'] ?? 'Colegio Ángel María Herrera',
       pickupAddress: map['direccion_recogida'] ?? map['pickupAddress'] ?? '',
       busCode: map['autobus_codigo'] ?? map['busCode'] ?? 'BUS-01',
-      routeCode: map['routeCode'] ?? 'R-01',
+      routeCode: map['routeCode'] ?? map['autobus_codigo'] ?? 'BUS-01',
       order: map['orden'] ?? map['order'] ?? 1,
       status: parsedStatus,
       lastBoardingTime: lastBoardingTime,
       boardingMethod: boardingMethod,
       monthlyFee: (map['cuota_mensual'] ?? map['monthlyFee']) != null
-          ? double.tryParse(map['cuota_mensual'].toString()) ?? 65.0
+          ? double.tryParse((map['cuota_mensual'] ?? map['monthlyFee']).toString()) ?? 65.0
           : 65.0,
       paymentStatus: map['estado_pago'] ?? map['paymentStatus'] ?? 'Al día',
       photoAsset: map['photoAsset'],
+      pickupLatitude: rawLat != null ? double.tryParse(rawLat.toString()) : null,
+      pickupLongitude: rawLng != null ? double.tryParse(rawLng.toString()) : null,
     );
   }
 
@@ -479,12 +589,15 @@ class StudentPassengerMock {
       'nombre': name,
       'padre_nombre': parentName,
       'padre_telefono': parentPhone,
+      if (parentId != null) 'padre_id': parentId,
       'colegio': schoolName,
       'direccion_recogida': pickupAddress,
       'autobus_codigo': busCode,
       'orden': order,
       'cuota_mensual': monthlyFee,
       'estado_pago': paymentStatus,
+      if (pickupLatitude != null) 'latitud_recogida': pickupLatitude,
+      if (pickupLongitude != null) 'longitud_recogida': pickupLongitude,
     };
   }
 }
@@ -507,6 +620,39 @@ class FleetFinancialSummary {
     required this.totalStudents,
   });
 
+  static const FleetFinancialSummary empty = FleetFinancialSummary(
+    totalSeats: 0,
+    occupiedSeats: 0,
+    totalRevenue: 0.0,
+    pendingRevenue: 0.0,
+    pendingPaymentsCount: 0,
+    totalStudents: 0,
+  );
+
   double get occupancyRate => totalSeats > 0 ? (occupiedSeats / totalSeats) * 100 : 0.0;
 }
+
+/// Modelo de datos para representar una institución educativa / escuela mapeada en el mapa telemático.
+class SchoolLocation {
+  final String id;
+  final String name;
+  final String shortName;
+  final double latitude;
+  final double longitude;
+  final String address;
+  final String type; // e.g. "Colegio Secundario", "Escuela Básica", etc.
+  final String? code;
+
+  const SchoolLocation({
+    required this.id,
+    required this.name,
+    required this.shortName,
+    required this.latitude,
+    required this.longitude,
+    required this.address,
+    this.type = 'Colegio',
+    this.code,
+  });
+}
+
 

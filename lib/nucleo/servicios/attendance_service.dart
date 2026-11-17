@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/servicios/supabase_client.dart';
 
 /// Servicio para el control y sincronización de asistencia diaria, ausencias y abordaje biométrico.
 class AttendanceService {
-  final SupabaseClient _supabase = SupabaseConfig.client;
+  final SupabaseClient? _injectedClient;
+
+  AttendanceService({SupabaseClient? supabaseClient}) : _injectedClient = supabaseClient;
+
+  SupabaseClient get _supabase => _injectedClient ?? SupabaseConfig.client;
 
   String get _todayDate => DateTime.now().toIso8601String().split('T')[0];
 
@@ -17,7 +22,50 @@ class AttendanceService {
     return '$hour:$minute $period';
   }
 
+  /// Filtra el manifiesto del día devolviendo únicamente las paradas activas (excluyendo ausentes - RF-11)
+  List<StudentPassengerMock> getActiveManifest(List<StudentPassengerMock> passengers) {
+    final active = passengers.where((p) => p.status != PassengerStatus.absent).toList();
+    active.sort((a, b) => a.order.compareTo(b.order));
+    return active;
+  }
+
+  /// Calcula el ahorro estimado de tiempo y recorrido por paradas omitidas debido a inasistencias (RF-11)
+  Map<String, num> calculateRouteSavings(List<StudentPassengerMock> passengers) {
+    final absentCount = passengers.where((p) => p.status == PassengerStatus.absent).length;
+    return {
+      'omittedStops': absentCount,
+      'savedMinutes': absentCount * 4,
+      'savedKilometers': double.parse((absentCount * 1.2).toStringAsFixed(1)),
+    };
+  }
+
+  Future<Map<String, String>> _fetchStudentNotificationMeta(int studentId) async {
+    try {
+      final row = await _supabase
+          .from('estudiantes_pasajeros')
+          .select('nombre, autobus_codigo, colegio')
+          .eq('id', studentId)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 3));
+      if (row != null) {
+        return {
+          'name': row['nombre']?.toString() ?? 'Estudiante #$studentId',
+          'busCode': row['autobus_codigo']?.toString() ?? 'BUS-01',
+          'schoolName': row['colegio']?.toString() ?? 'el colegio',
+        };
+      }
+    } catch (e) {
+      debugPrint('Aviso obteniendo metadatos de estudiante($studentId): $e');
+    }
+    return {
+      'name': 'Estudiante #$studentId',
+      'busCode': 'BUS-01',
+      'schoolName': 'el colegio',
+    };
+  }
+
   /// Registra el abordaje del estudiante en el autobús (Biometría Facial AI o Contingencia Manual)
+  /// y envía notificación push inmediata de Prueba de Vida al padre (RF-09, RF-10, RF-15).
   Future<void> checkInPassenger({
     required int studentId,
     String method = 'Biometría Facial AI',
@@ -36,7 +84,20 @@ class AttendanceService {
           'metodo_abordaje': method,
         },
         onConflict: 'estudiante_id,fecha,jornada',
-      );
+      ).timeout(const Duration(seconds: 4));
+
+      final meta = await _fetchStudentNotificationMeta(studentId);
+      final studentName = meta['name']!;
+      final busCode = meta['busCode']!;
+
+      // RF-15: Disparar notificación push inmediata de confirmación de abordaje
+      await _supabase.from('notificaciones').insert({
+        'autobus_codigo': busCode,
+        'titulo': 'Abordaje Confirmado ($method)',
+        'mensaje': '$studentName abordó el autobús $busCode de forma segura a las $timeStr.',
+        'tipo': 'system',
+        'leida': false,
+      }).timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Error en checkInPassenger: $e');
       rethrow;
@@ -44,10 +105,13 @@ class AttendanceService {
   }
 
   /// Marca que el estudiante ha sido entregado en el colegio o destino final
+  /// y notifica automáticamente al padre de familia (RF-15).
   Future<void> checkOutPassenger({
     required int studentId,
     String jornada = 'manana',
   }) async {
+    final timeStr = _formatCurrentTime();
+
     try {
       await _supabase.from('asistencia_diaria').upsert(
         {
@@ -57,7 +121,21 @@ class AttendanceService {
           'estado': 'delivered',
         },
         onConflict: 'estudiante_id,fecha,jornada',
-      );
+      ).timeout(const Duration(seconds: 4));
+
+      final meta = await _fetchStudentNotificationMeta(studentId);
+      final studentName = meta['name']!;
+      final busCode = meta['busCode']!;
+      final schoolName = meta['schoolName']!;
+
+      // RF-15: Disparar notificación push de llegada segura al colegio
+      await _supabase.from('notificaciones').insert({
+        'autobus_codigo': busCode,
+        'titulo': 'Llegada Segura al Colegio',
+        'mensaje': '$studentName ingresó a $schoolName a las $timeStr.',
+        'tipo': 'info',
+        'leida': false,
+      }).timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('Error en checkOutPassenger: $e');
       rethrow;
@@ -113,7 +191,7 @@ class AttendanceService {
     try {
       final response = await _supabase
           .from('asistencia_diaria')
-          .select()
+          .select('estudiante_id, fecha, jornada, estado, hora_abordaje, metodo_abordaje')
           .filter('estudiante_id', 'in', studentIds)
           .eq('fecha', _todayDate)
           .timeout(SupabaseConfig.defaultTimeout);
@@ -126,6 +204,9 @@ class AttendanceService {
         map[id] = row as Map<String, dynamic>;
       }
       return map;
+    } on PostgrestException catch (e) {
+      debugPrint('Error PostgREST en getTodayAttendanceForStudents [${e.code}]: ${e.message}');
+      return {};
     } catch (e) {
       debugPrint('Aviso getTodayAttendanceForStudents (usando fallback local): $e');
       return {};

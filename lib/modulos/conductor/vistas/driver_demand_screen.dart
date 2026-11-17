@@ -4,13 +4,16 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:smartroute_flutter/modulos/autenticacion/datos/session_manager.dart';
 import 'package:smartroute_flutter/nucleo/modelos/models.dart';
 import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
 import 'package:smartroute_flutter/nucleo/servicios/attendance_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/servicios/student_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/driver_bottom_bar.dart';
+import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/facial_boarding_dialog.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
@@ -29,12 +32,26 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
   List<StudentPassengerMock> _allPassengers = [];
   bool _isLoading = true;
   StreamSubscription? _attendanceSub;
+  StreamSubscription<StudentPassengerMock>? _locationSub;
+  RealtimeChannel? _studentsRealtimeChannel;
+  StudentService? _studentService;
 
   @override
   void initState() {
     super.initState();
+    _locationSub = StudentService.locationUpdatesStream.listen((updated) {
+      if (!mounted) return;
+      setState(() {
+        final idx = _allPassengers.indexWhere((p) => p.id == updated.id);
+        if (idx != -1) {
+          _allPassengers[idx] = updated;
+        } else if (_bus != null && updated.busCode == _bus!.code) {
+          _allPassengers = [..._allPassengers, updated];
+        }
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadManifest();
+      _loadManifest(silent: false);
       _subscribeToRealtimeAttendance();
     });
   }
@@ -42,30 +59,59 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
   @override
   void dispose() {
     _attendanceSub?.cancel();
+    _locationSub?.cancel();
+    _studentService?.unsubscribeChannel(_studentsRealtimeChannel);
     super.dispose();
   }
 
   void _subscribeToRealtimeAttendance() {
     try {
       final attendanceService = context.read<AttendanceService>();
+      final studentService = context.read<StudentService>();
+      _studentService = studentService;
+
       _attendanceSub = attendanceService.streamTodayAttendance().listen((_) {
         _loadManifest(silent: true);
       });
+      _studentsRealtimeChannel = studentService.subscribeToStudentChanges(
+        channelName: 'driver_demand_estudiantes_${DateTime.now().millisecondsSinceEpoch}',
+        onChanged: () {
+          if (mounted) {
+            _loadManifest(silent: true);
+          }
+        },
+      );
     } catch (e) {
       debugPrint('Aviso en suscripción de asistencia: $e');
     }
   }
 
   Future<void> _loadManifest({bool silent = false}) async {
-    if (!silent) {
+    if (!silent && _bus == null && mounted) {
       setState(() => _isLoading = true);
     }
 
     try {
       final busService = context.read<BusService>();
       final studentService = context.read<StudentService>();
+      final session = context.read<SessionManager>().currentSession;
 
-      final bus = await busService.getBusByCode('BUS-01') ?? (await busService.getAllBuses()).first;
+      BusMock? bus;
+      if (session != null && session.userId.isNotEmpty) {
+        bus = await busService.getBusByDriver(session.userId);
+      }
+
+      if (bus == null) {
+        if (mounted) {
+          setState(() {
+            _bus = null;
+            _allPassengers = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       final passengers = await studentService.getStudentsByBus(bus.code);
 
       if (mounted) {
@@ -77,8 +123,10 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
       }
     } catch (e) {
       debugPrint('Error cargando manifiesto de conductor: $e');
-      if (mounted && !silent) {
-        setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -102,7 +150,7 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Abordaje manual registrado para ${student.name}'),
-            backgroundColor: SmartColors.smartBlue,
+            backgroundColor: SmartColors.deepBlue,
           ),
         );
         _loadManifest(silent: true);
@@ -132,13 +180,60 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bus = _bus ?? MockData.getBusByCode('BUS-01') ?? MockData.buses.first;
-    final waitingCount = _allPassengers.where((p) => p.status == PassengerStatus.waiting).length;
-    final onboardCount = _allPassengers.where((p) => p.status == PassengerStatus.onboard).length;
-    final absentCount = _allPassengers.where((p) => p.status == PassengerStatus.absent).length;
-    final absentStudents = _allPassengers.where((p) => p.status == PassengerStatus.absent).toList();
+    final bus = _bus;
+    if (bus == null) {
+      return Scaffold(
+        backgroundColor: SmartColors.neuBackground,
+        bottomNavigationBar: DriverBottomBar(
+          currentRoute: '/driver_demand',
+          onNavigate: (route) => context.go(route),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: SmartColors.deepBlue))
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const EmptyState(
+                        message: 'Sin autobús asignado',
+                        subMessage:
+                            'El dueño de flota aún no te ha asignado una unidad escolar.',
+                        icon: Icons.directions_bus_outlined,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _loadManifest(silent: false),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('REINTENTAR'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: SmartColors.deepBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      );
+    }
+    final passengers = _allPassengers;
 
-    final filteredPassengers = _allPassengers.where((p) {
+    final waitingCount = passengers.where((p) => p.status == PassengerStatus.waiting).length;
+    final onboardCount = passengers.where((p) => p.status == PassengerStatus.onboard).length;
+    final absentCount = passengers.where((p) => p.status == PassengerStatus.absent).length;
+    final absentStudents = passengers.where((p) => p.status == PassengerStatus.absent).toList();
+    final routeSavings = context.read<AttendanceService>().calculateRouteSavings(passengers);
+
+    final filteredPassengers = passengers.where((p) {
       if (_selectedFilter == 'A bordo') return p.status == PassengerStatus.onboard;
       if (_selectedFilter == 'En espera') return p.status == PassengerStatus.waiting;
       if (_selectedFilter == 'Ausentes') return p.status == PassengerStatus.absent;
@@ -166,215 +261,235 @@ class _DriverDemandScreenState extends State<DriverDemandScreen> {
         elevation: 0,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 6.0),
-            child: NeumorphicBox(
-              padding: EdgeInsets.zero,
-              isPill: true,
-              child: IconButton(
-                tooltip: 'Recargar manifiesto',
-                icon: const Icon(Icons.refresh_rounded, color: SmartColors.deepBlue, size: 20),
-                onPressed: () => _loadManifest(),
-              ),
-            ),
-          ),
-          Padding(
             padding: const EdgeInsets.only(right: 14.0),
             child: NeumorphicBox(
               padding: EdgeInsets.zero,
               isPill: true,
               child: IconButton(
                 tooltip: 'Terminal Facial AI',
-                icon: const Icon(Icons.face_retouching_natural_rounded, color: SmartColors.deepBlue, size: 20),
+                icon: const Icon(
+                  Icons.face_retouching_natural_rounded,
+                  color: SmartColors.deepBlue,
+                  size: 20,
+                ),
                 onPressed: () => _openFacialScanner(),
               ),
             ),
           ),
         ],
       ),
-      body: ResponsiveContent(
-        maxWidth: 1000,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Banner Superior Neumórfico
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: NeumorphicBox(
-                padding: const EdgeInsets.all(18),
-                borderRadius: BorderRadius.circular(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            bus.routeName ?? 'Ruta Escolar Norte',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                              color: SmartColors.deepBlack,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: SmartColors.deepBlue))
+          : ResponsiveContent(
+              maxWidth: 1000,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Banner Superior Neumórfico
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: NeumorphicBox(
+                      padding: const EdgeInsets.all(18),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  bus.routeName ?? 'Ruta Escolar Norte',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: SmartColors.deepBlack,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: SmartColors.deepBlack,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '${bus.seatsOccupied}/${bus.capacity} CUPOS',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: SmartColors.vibrantCyan,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: SmartColors.deepBlack,
-                            borderRadius: BorderRadius.circular(999),
+                          const SizedBox(height: 14),
+                          // Contadores Quivox
+                          Row(
+                            children: [
+                              _MiniCounter(
+                                label: 'A BORDO',
+                                count: onboardCount,
+                                color: SmartColors.deepBlack,
+                                accentColor: SmartColors.vibrantCyan,
+                              ),
+                              const SizedBox(width: 8),
+                              _MiniCounter(
+                                label: 'EN ESPERA',
+                                count: waitingCount,
+                                color: SmartColors.deepBlue,
+                                accentColor: SmartColors.deepBlue,
+                              ),
+                              const SizedBox(width: 8),
+                              _MiniCounter(
+                                label: 'AUSENTES',
+                                count: absentCount,
+                                color: SmartColors.primaryCrimson,
+                                accentColor: SmartColors.primaryCrimson,
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            '${bus.seatsOccupied}/${bus.capacity} CUPOS',
-                            style: GoogleFonts.jetBrainsMono(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: SmartColors.vibrantCyan,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    // Contadores Quivox
-                    Row(
-                      children: [
-                        _MiniCounter(
-                          label: 'A BORDO',
-                          count: onboardCount,
-                          color: SmartColors.deepBlack,
-                          accentColor: SmartColors.vibrantCyan,
-                        ),
-                        const SizedBox(width: 8),
-                        _MiniCounter(
-                          label: 'EN ESPERA',
-                          count: waitingCount,
-                          color: SmartColors.deepBlue,
-                          accentColor: SmartColors.deepBlue,
-                        ),
-                        const SizedBox(width: 8),
-                        _MiniCounter(
-                          label: 'AUSENTES',
-                          count: absentCount,
-                          color: SmartColors.primaryCrimson,
-                          accentColor: SmartColors.primaryCrimson,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Botón Escáner Facial
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
-              child: PrimaryButton(
-                text: 'TERMINAL BIOMÉTRICA FACIAL AI',
-                icon: Icons.camera_alt_rounded,
-                height: 48,
-                onPressed: () => _openFacialScanner(),
-              ),
-            ),
-
-            // Filtros tipo Quivox Segmented Pills
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['Todos', 'En espera', 'A bordo', 'Ausentes'].map((filter) {
-                    final isSelected = _selectedFilter == filter;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: GestureDetector(
-                        onTap: () => setState(() => _selectedFilter = filter),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: isSelected ? SmartColors.deepBlack : SmartColors.ghostWhite,
-                            borderRadius: BorderRadius.circular(999),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: SmartColors.deepBlack.withValues(alpha: 0.25),
-                                      offset: const Offset(0, 3),
-                                      blurRadius: 8,
+                          if (absentCount > 0) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: SmartColors.primaryCrimson.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.directions_run_rounded, color: SmartColors.primaryCrimson, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${absentStudents.map((s) => s.name).join(', ')} reportó inasistencia (Ahorro: ${routeSavings['savedMinutes']} min / ${routeSavings['savedKilometers']} km).',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: SmartColors.primaryCrimson,
+                                      ),
                                     ),
-                                  ]
-                                : null,
-                            border: Border.all(
-                              color: isSelected ? Colors.transparent : SmartColors.neuBorder,
-                              width: 1,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          child: Text(
-                            filter.toUpperCase(),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                              color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
-                            ),
-                          ),
-                        ),
+                          ],
+                        ],
                       ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
+                    ),
+                  ),
 
-            // Lista o Grilla Responsiva de Estudiantes
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final bool isWide = constraints.maxWidth >= 720;
-                  if (isWide) {
-                    return GridView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 2.1,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 14,
+                  // Botón Escáner Facial
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+                    child: PrimaryButton(
+                      text: 'TERMINAL BIOMÉTRICA FACIAL AI',
+                      icon: Icons.camera_alt_rounded,
+                      height: 48,
+                      onPressed: () => _openFacialScanner(),
+                    ),
+                  ),
+
+                  // Filtros tipo Quivox Segmented Pills
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['Todos', 'En espera', 'A bordo', 'Ausentes'].map((filter) {
+                          final isSelected = _selectedFilter == filter;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: GestureDetector(
+                              onTap: () => setState(() => _selectedFilter = filter),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? SmartColors.deepBlack : SmartColors.ghostWhite,
+                                  borderRadius: BorderRadius.circular(999),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: SmartColors.deepBlack.withValues(alpha: 0.25),
+                                            offset: const Offset(0, 3),
+                                            blurRadius: 8,
+                                          ),
+                                        ]
+                                      : null,
+                                  border: Border.all(
+                                    color: isSelected ? Colors.transparent : SmartColors.neuBorder,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  filter.toUpperCase(),
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.6,
+                                    color: isSelected ? SmartColors.ghostWhite : SmartColors.smartGray,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
-                      itemCount: filteredPassengers.length,
-                      itemBuilder: (context, index) {
-                        final student = filteredPassengers[index];
-                        return _StudentManifestCard(
-                          student: student,
-                          onScanFacial: () => _openFacialScanner(student),
-                          onManualCheckIn: () => _manualCheckIn(student),
-                          onCheckOut: () => _checkOut(student),
-                        );
+                    ),
+                  ),
+
+                  // Lista o Grilla Responsiva de Estudiantes
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final bool isWide = constraints.maxWidth >= 720;
+                        if (isWide) {
+                          return GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 2.1,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                            ),
+                            itemCount: filteredPassengers.length,
+                            itemBuilder: (context, index) {
+                              final student = filteredPassengers[index];
+                              return _StudentManifestCard(
+                                student: student,
+                                onScanFacial: () => _openFacialScanner(student),
+                                onManualCheckIn: () => _manualCheckIn(student),
+                                onCheckOut: () => _checkOut(student),
+                              );
+                            },
+                          );
+                        } else {
+                          return ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
+                            itemCount: filteredPassengers.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final student = filteredPassengers[index];
+                              return _StudentManifestCard(
+                                student: student,
+                                onScanFacial: () => _openFacialScanner(student),
+                                onManualCheckIn: () => _manualCheckIn(student),
+                                onCheckOut: () => _checkOut(student),
+                              );
+                            },
+                          );
+                        }
                       },
-                    );
-                  } else {
-                    return ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
-                      itemCount: filteredPassengers.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final student = filteredPassengers[index];
-                        return _StudentManifestCard(
-                          student: student,
-                          onScanFacial: () => _openFacialScanner(student),
-                          onManualCheckIn: () => _manualCheckIn(student),
-                          onCheckOut: () => _checkOut(student),
-                        );
-                      },
-                    );
-                  }
-                },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -580,10 +695,10 @@ class _StudentManifestCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Check-in Manual (RF-10)',
-                    icon: const Icon(Icons.touch_app, color: SmartColors.smartBlue),
+                    icon: const Icon(Icons.touch_app, color: SmartColors.deepBlue),
                     style: IconButton.styleFrom(
-                      backgroundColor: SmartColors.smartLightBlue,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      backgroundColor: SmartColors.neuInset,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: onManualCheckIn,
                   ),

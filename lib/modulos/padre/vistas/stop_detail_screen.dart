@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import 'package:smartroute_flutter/nucleo/datos/mock_data.dart';
+import 'package:smartroute_flutter/nucleo/modelos/models.dart';
+import 'package:smartroute_flutter/nucleo/servicios/bus_service.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/status_chip.dart';
 import 'package:smartroute_flutter/nucleo/widgets/empty_state.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/responsive_layout.dart';
+import 'package:smartroute_flutter/nucleo/vistas/transit_loading_screen.dart';
 
 class StopDetailScreen extends StatefulWidget {
   final String stopCode;
@@ -23,20 +26,41 @@ class StopDetailScreen extends StatefulWidget {
 }
 
 class _StopDetailScreenState extends State<StopDetailScreen> {
-  late bool isFavorite;
+  bool isFavorite = false;
   bool isAlertEnabled = true;
+  StopMock? _stop;
+  RouteMock? _route;
 
   @override
   void initState() {
     super.initState();
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    isFavorite = stop?.isFavorite ?? false;
+    _loadStopDetail();
+  }
+
+  Future<void> _loadStopDetail() async {
+    try {
+      final busService = context.read<BusService>();
+      final stop = await busService.getStopByCode(widget.stopCode);
+      RouteMock? route;
+      if (stop != null) {
+        route = await busService.getRouteByCode(stop.routeCode);
+      }
+      if (mounted) {
+        setState(() {
+          _stop = stop;
+          _route = route;
+          isFavorite = stop?.isFavorite ?? false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando detalle de parada: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final stop = MockData.stops.where((s) => s.stopCode == widget.stopCode).firstOrNull;
-    final route = stop != null ? MockData.getRouteByCode(stop.routeCode) : null;
+    final stop = _stop;
+    final route = _route;
 
     return Scaffold(
       backgroundColor: SmartColors.neuBackground,
@@ -82,10 +106,23 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                     color: isFavorite ? SmartColors.primaryCrimson : SmartColors.smartGray,
                     size: 20,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final updated = await context
+                        .read<BusService>()
+                        .toggleStopFavorite(widget.stopCode, !isFavorite);
+                    final newFav = updated?.isFavorite ?? !isFavorite;
+                    if (!mounted) return;
                     setState(() {
-                      isFavorite = !isFavorite;
+                      isFavorite = newFav;
                     });
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(newFav ? 'Parada marcada como favorita' : 'Parada quitada de favoritas'),
+                        duration: const Duration(seconds: 1),
+                        backgroundColor: SmartColors.deepBlue,
+                      ),
+                    );
                   },
                 ),
               ),
@@ -234,7 +271,15 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
                   PrimaryButton(
                     text: 'SELECCIONAR ESTA PARADA',
                     icon: Icons.check_circle_rounded,
-                    onPressed: () => context.go('/map/${stop.routeCode}/${stop.stopCode}'),
+                    onPressed: () {
+                      TransitLoadingScreen.open(
+                        context,
+                        targetRoute: '/map/${stop.routeCode}/${stop.stopCode}',
+                        title: 'CARGANDO UBICACIÓN DE PARADA',
+                        subtitle: 'Localizando unidad Toyota HiAce en la parada ${stop.name}...',
+                        badge: 'GEOLOCALIZACIÓN PARADA',
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
 

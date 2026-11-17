@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:smartroute_flutter/nucleo/servicios/gps_permission_helper.dart';
 import 'package:smartroute_flutter/nucleo/tema/colors.dart';
 import 'package:smartroute_flutter/nucleo/widgets/neumorphic_box.dart';
 import 'package:smartroute_flutter/nucleo/widgets/primary_button.dart';
@@ -188,7 +189,12 @@ class PermissionGateScreen extends StatelessWidget {
                 child: PrimaryButton(
                   text: 'ACTIVAR Y CONTINUAR',
                   icon: Icons.lock_open_rounded,
-                  onPressed: () => context.go('/login'),
+                  onPressed: () async {
+                    await GpsPermissionHelper.ensureLocationReady(context);
+                    if (context.mounted) {
+                      context.go('/login');
+                    }
+                  },
                 ),
               ),
             ],

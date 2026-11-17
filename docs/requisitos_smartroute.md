@@ -48,8 +48,8 @@ Resuelve la falta de visibilidad y desconfianza de los **padres de familia** res
 
 ### 🚌 Módulo B: Gestión de Flota, Cupos y Finanzas (Dueño / SaaS)
 
-* #### **RF-04: Registro y Configuración de Unidades Escolares**
-  * **Descripción:** El dueño de flota podrá dar de alta autobuses definiendo código de unidad, número de placa, modelo, colegio asociado y capacidad total de asientos (`max_capacity`).
+* #### **RF-04: Registro y Configuración de Unidades Escolares Multi-Colegio**
+  * **Descripción:** El dueño de flota podrá dar de alta autobuses definiendo código de unidad, número de placa, modelo, capacidad total de asientos (`capacidad`) y colegio base opcional (`colegio_asignado`, por defecto `'Múltiples colegios'`), derivando automáticamente los colegios cubiertos según sus estudiantes asignados (`BusService.extractCoveredSchools`).
   * **Actores:** ACT-03 (Dueño de Flota).
   * **Prioridad:** Alta.
 
@@ -66,8 +66,8 @@ Resuelve la falta de visibilidad y desconfianza de los **padres de familia** res
   * **Actores:** ACT-03 (Dueño de Flota).
   * **Prioridad:** Media / Alta.
 
-* #### **RF-07: Monitoreo Multivehicular de Flota en Vivo**
-  * **Descripción:** Mapa interactivo con soporte geoespacial que proyecta la ubicación de todos los autobuses de la flota en tiempo real, identificando chofer asignado, velocidad y estado de servicio.
+* #### **RF-07: Monitoreo Multivehicular de Flota en Vivo con Colores y Filtro Multi-Selección**
+  * **Descripción:** Mapa interactivo (`OwnerMapScreen`) con soporte geoespacial que proyecta las rutas óptimas Dijkstra + OSRM y ubicaciones de los autobuses en tiempo real, diferenciando cada unidad por color (polilínea, marcador de bus y pines de alumnos) y permitiendo filtrar dinámicamente 1, 2 o $N$ buses simultáneamente junto con sus colegios destino.
   * **Actores:** ACT-03 (Dueño de Flota).
   * **Prioridad:** Alta.
 
@@ -90,14 +90,14 @@ Resuelve la falta de visibilidad y desconfianza de los **padres de familia** res
   * **Actores:** ACT-02 (Conductor).
   * **Prioridad:** Alta.
 
-* #### **RF-11: Recálculo Inteligente de Ruta por Inasistencias**
-  * **Descripción:** Si un tutor reporta que su hijo no asiste, el sistema debe alertar al conductor y omitir automáticamente la parada de ese alumno del itinerario GPS, reduciendo tiempos de trayecto y gasto de gasolina.
-  * **Actores:** ACT-02, ACT-01.
+* #### **RF-11: Recálculo Inteligente de Ruta Dijkstra + OSRM por Inasistencias y Asignaciones**
+  * **Descripción:** `RouteOptimizerService` recalcula reactivamente vía Supabase Realtime la ruta óptima (Dijkstra + OSRM multi-colegio) excluyendo estudiantes ausentes en `asistencia_diaria` e incorporando en vivo nuevos estudiantes asignados o cambios de coordenadas/colegio.
+  * **Actores:** ACT-02, ACT-01, ACT-03.
   * **Prioridad:** Alta.
 
-* #### **RF-12: Transmisión Telemática de Ubicación GPS**
-  * **Descripción:** El dispositivo del conductor emitirá periódicamente coordenadas geoespaciales precisas al servidor durante la ejecución de la ruta activa.
-  * **Actores:** ACT-02 (Conductor).
+* #### **RF-12: Transmisión Telemática y Simulación Realista (`BusTelemetryController`)**
+  * **Descripción:** El controlador de telemetría soporta `TelemetryMode.simulated` (avance progresivo sobre la polilínea OSRM a 30–44 km/h con pausa, `1x`/`2x` y cálculo de próxima parada) y `TelemetryMode.realGps` (contrato listo para `geolocator`), publicando coordenadas y velocidad en `public.autobuses`.
+  * **Actores:** ACT-02 (Conductor), ACT-03 (Dueño de Flota).
   * **Prioridad:** Alta.
 
 * #### **RF-13: Reporte de Incidentes en Ruta**
